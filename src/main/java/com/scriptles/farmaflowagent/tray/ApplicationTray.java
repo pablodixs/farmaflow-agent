@@ -74,23 +74,27 @@ public class ApplicationTray implements ApplicationListener<ApplicationReadyEven
         }
 
         PopupMenu menu = new PopupMenu();
-        MenuItem statusItem = new MenuItem("FarmaFlow Agent rodando");
+        MenuItem statusItem = new MenuItem("FarmaFlow Agent");
         statusItem.setEnabled(false);
+
+        MenuItem openApp = new MenuItem("Abrir FarmaFlow");
+        openApp.addActionListener(event -> openWebApp());
 
         MenuItem openItem = new MenuItem("Abrir painel");
         openItem.addActionListener(event -> openLocalPanel());
 
         MenuItem statusItemLink = new MenuItem("Status do dispositivo");
-        statusItemLink.addActionListener(event -> openLocalUrl("/agent/status"));
+        statusItemLink.addActionListener(event -> openLocalUrl("/status.html"));
 
         MenuItem updateItem = new MenuItem("Verificar atualizacao");
-        updateItem.addActionListener(event -> openLocalUrl("/agent/update/check"));
+        updateItem.addActionListener(event -> openLocalUrl("/update.html"));
 
         MenuItem exitItem = new MenuItem("Sair");
         exitItem.addActionListener(event -> EventQueue.invokeLater(context::close));
 
         menu.add(statusItem);
         menu.addSeparator();
+        menu.add(openApp);
         menu.add(openItem);
         menu.add(statusItemLink);
         menu.add(updateItem);
@@ -104,8 +108,8 @@ public class ApplicationTray implements ApplicationListener<ApplicationReadyEven
             SystemTray.getSystemTray().add(trayIcon);
             trayIcon.displayMessage(
                     "FarmaFlow Agent",
-                    "Rodando em segundo plano na porta " + serverPort,
-                    TrayIcon.MessageType.INFO
+                    "Rodando em segundo plano.",
+                    TrayIcon.MessageType.NONE
             );
         } catch (AWTException exception) {
             LOGGER.warn("Nao foi possivel adicionar o tray de aplicativos.", exception);
@@ -113,7 +117,7 @@ public class ApplicationTray implements ApplicationListener<ApplicationReadyEven
     }
 
     private void openLocalPanel() {
-        openLocalUrl("/print/printers");
+        openLocalUrl("/index.html");
     }
 
     private void openLocalUrl(String path) {
@@ -123,6 +127,18 @@ public class ApplicationTray implements ApplicationListener<ApplicationReadyEven
 
         try {
             Desktop.getDesktop().browse(URI.create("http://localhost:" + serverPort + path));
+        } catch (Exception exception) {
+            LOGGER.warn("Nao foi possivel abrir o painel local.", exception);
+        }
+    }
+
+    private void openWebApp() {
+        if (!Desktop.isDesktopSupported()) {
+            return;
+        }
+
+        try {
+            Desktop.getDesktop().browse(URI.create("https://farmaflow-rho.vercel.app/dashboard"));
         } catch (Exception exception) {
             LOGGER.warn("Nao foi possivel abrir o painel local.", exception);
         }
