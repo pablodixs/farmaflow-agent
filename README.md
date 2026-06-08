@@ -264,9 +264,9 @@ O projeto possui workflow de release em `.github/workflows/release.yml`.
 
 Para publicar automaticamente no GitHub Releases:
 
-1. Crie uma tag no formato `v*` (ex.: `v0.0.1`) e envie para o repositorio.
-2. O workflow **Release JAR** ira executar `mvn clean package`.
-3. O arquivo `target/farmaflow-agent-*.jar` sera anexado no release criado da tag.
+1. Crie uma tag no formato `v*` (ex.: `v0.0.1`) e envie para o repositório.
+2. O workflow **Release JAR** irá executar `mvn clean package`.
+3. O arquivo `target/farmaflow-agent-*.jar` será anexado no release criado da tag.
 
 Para testar:
 
