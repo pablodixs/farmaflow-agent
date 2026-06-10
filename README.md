@@ -177,6 +177,58 @@ Body:
 
 `paperWidth` aceita `58mm` ou `80mm`.
 
+### Imprimir PDF
+
+```http
+POST /print/pdf
+Content-Type: multipart/form-data
+```
+
+Campos:
+
+- `file`: arquivo PDF.
+- `printerName`: nome da impressora.
+- `paperWidth`: opcional, `58mm` ou `80mm`.
+- `type`: opcional, identificador do documento.
+
+Resposta:
+
+```json
+{
+  "jobId": "7b4d5fd7-0b3d-4e1f-8a1f-f8d778ab4c11",
+  "status": "QUEUED",
+  "progress": 0,
+  "message": "PDF aguardando processamento",
+  "statusUrl": "/print/pdf/7b4d5fd7-0b3d-4e1f-8a1f-f8d778ab4c11/status",
+  "error": null
+}
+```
+
+### Status da impressao PDF
+
+```http
+GET /print/pdf/{jobId}/status
+```
+
+Resposta:
+
+```json
+{
+  "jobId": "7b4d5fd7-0b3d-4e1f-8a1f-f8d778ab4c11",
+  "status": "PRINTING",
+  "progress": 70,
+  "message": "Enviando PDF para impressora",
+  "printerName": "ELGIN i9",
+  "fileName": "sale-123.pdf",
+  "type": "sale_receipt",
+  "paperWidth": "80mm",
+  "error": null
+}
+```
+
+`status` pode ser `QUEUED`, `PROCESSING`, `PRINTING`, `COMPLETED` ou `FAILED`.
+Quando houver erro, `status` retorna `FAILED` e `error` traz a mensagem.
+
 ### Status do dispositivo
 
 ```http
