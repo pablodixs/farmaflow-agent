@@ -1,393 +1,49 @@
 # FarmaFlow Agent
 
-Agente local do FarmaFlow para impressao ESC/POS, consulta de impressoras,
-status do computador, tray na bandeja do Windows e verificacao de atualizacao
-OTA via manifesto remoto.
+Companion Windows do FarmaFlow. A aplicação roda por usuário na bandeja do
+Windows, expõe uma API somente em `127.0.0.1:3333`, integra impressoras locais e
+mantém uma outbox SQLite para a evolução do modo offline.
 
-## Requisitos
+## Requisitos de desenvolvimento
 
-- Windows 10 ou superior
-- Java/JDK 21 para desenvolvimento e empacotamento
-- Maven Wrapper incluido no projeto (`mvnw.cmd`)
-- Impressora termica instalada no Windows
+- Windows 10 ou 11 x64
+- .NET SDK 8
+- Inno Setup 6 apenas para gerar o instalador localmente
 
-Para gerar instalador `.exe` com assistente, tambem e necessario instalar o
-WiX Toolset e adicionar `candle.exe` e `light.exe` ao `PATH`.
-
-## Rodar em desenvolvimento
+## Executar
 
 ```powershell
-.\mvnw.cmd spring-boot:run
+dotnet run --project src/FarmaFlow.Agent/FarmaFlow.Agent.csproj
 ```
 
-O agente sobe por padrao em:
+As configurações ficam em
+`src/FarmaFlow.Agent/appsettings.json`. Para produção, defina `ApiBaseUrl`,
+`WebAppUrl` e a lista exata de `AllowedOrigins`.
 
-```text
-http://localhost:3333
-```
+## Integração local
 
-## Configuracao
+O frontend inicia uma sessão local por `GET` e `POST /agent/local/handshake`.
+Os demais endpoints exigem o token Bearer emitido pelo handshake.
 
-As configuracoes ficam em:
+- `GET /agent/health`
+- `GET /agent/status`
+- `GET /print/printers`
+- `POST /print/test`
+- `POST /print/pdf`
+- `GET /print/pdf/{jobId}/status`
+- `POST /offline/operations`
 
-```text
-src/main/resources/application.properties
-```
+O pareamento da estação é iniciado no app web. O usuário informa o código de
+uso único pelo menu **Parear estação** do tray. A credencial devolvida pelo
+backend é protegida com DPAPI para o usuário atual do Windows.
 
-Opcoes atuais:
+## Build e release
 
-```properties
-spring.application.name=farmaflow-agent
-server.port=3333
-agent.version=0.0.1-SNAPSHOT
-agent.internet-check.url=https://www.google.com/generate_204
-agent.internet-check.timeout-ms=3000
-agent.tray.icon-path=
-agent.update.manifest-url=
-```
+Pull requests e pushes em `master` executam o build `win-x64` no GitHub
+Actions. Uma tag como `v1.0.0` publica automaticamente:
 
-- `server.port`: porta local da API.
-- `agent.version`: versao atual usada na checagem OTA.
-- `agent.internet-check.url`: URL usada para testar internet.
-- `agent.internet-check.timeout-ms`: timeout do teste de internet.
-- `agent.tray.icon-path`: caminho absoluto para um icone personalizado do tray.
-- `agent.update.manifest-url`: URL do manifesto remoto de atualizacao.
+- `FarmaFlowAgent-Setup.exe`
+- `SHA256SUMS.txt`
 
-## Tray
-
-Ao iniciar em ambiente grafico, o agente cria um icone na bandeja do Windows.
-O menu inclui:
-
-- Abrir painel
-- Status do dispositivo
-- Verificar atualizacao
-- Sair
-
-Para usar uma imagem personalizada no tray, coloque um arquivo:
-
-```text
-src/main/resources/tray-icon.png
-```
-
-Ou configure um caminho absoluto:
-
-```properties
-agent.tray.icon-path=C:/FarmaFlow/tray-icon.png
-```
-
-## Endpoints
-
-### Listar impressoras
-
-```http
-GET /print/printers
-```
-
-Resposta:
-
-```json
-[
-  "ELGIN i9",
-  "Microsoft Print to PDF"
-]
-```
-
-### Imprimir venda
-
-```http
-POST /print/sale
-```
-
-Body:
-
-```json
-{
-  "type": "sale_receipt",
-  "printerName": "ELGIN i9",
-  "paperWidth": "80mm",
-  "store": {
-    "name": "FarmaFlow",
-    "cnpj": "00.000.000/0001-00",
-    "address": "Rua Exemplo, 123"
-  },
-  "customer": null,
-  "items": [
-    {
-      "name": "Produto teste",
-      "quantity": 1,
-      "unitPrice": 10.50,
-      "total": 10.50
-    }
-  ],
-  "total": 10.50,
-  "paymentMethod": "Dinheiro"
-}
-```
-
-### Imprimir recibo de entrega
-
-```http
-POST /print/delivery
-```
-
-Body:
-
-```json
-{
-  "type": "delivery_receipt",
-  "printerName": "ELGIN i9",
-  "paperWidth": "80mm",
-  "store": {
-    "name": "FarmaFlow",
-    "cnpj": "00.000.000/0001-00",
-    "address": "Rua Exemplo, 123"
-  },
-  "customer": {
-    "name": "Cliente Teste",
-    "phone": "(11) 99999-9999",
-    "address": "Endereco de entrega"
-  },
-  "items": [
-    {
-      "name": "Produto teste",
-      "quantity": 1,
-      "unitPrice": 10.50,
-      "total": 10.50
-    }
-  ],
-  "total": 10.50,
-  "paymentMethod": "Pix"
-}
-```
-
-### Teste de impressora
-
-```http
-POST /print/test
-```
-
-Body:
-
-```json
-{
-  "printerName": "ELGIN i9",
-  "paperWidth": "80mm"
-}
-```
-
-`paperWidth` aceita `58mm` ou `80mm`.
-
-### Imprimir PDF
-
-```http
-POST /print/pdf
-Content-Type: multipart/form-data
-```
-
-Campos:
-
-- `file`: arquivo PDF.
-- `printerName`: nome da impressora.
-- `paperWidth`: opcional, `58mm` ou `80mm`.
-- `type`: opcional, identificador do documento.
-
-Resposta:
-
-```json
-{
-  "jobId": "7b4d5fd7-0b3d-4e1f-8a1f-f8d778ab4c11",
-  "status": "QUEUED",
-  "progress": 0,
-  "message": "PDF aguardando processamento",
-  "statusUrl": "/print/pdf/7b4d5fd7-0b3d-4e1f-8a1f-f8d778ab4c11/status",
-  "error": null
-}
-```
-
-### Status da impressao PDF
-
-```http
-GET /print/pdf/{jobId}/status
-```
-
-Resposta:
-
-```json
-{
-  "jobId": "7b4d5fd7-0b3d-4e1f-8a1f-f8d778ab4c11",
-  "status": "PRINTING",
-  "progress": 70,
-  "message": "Enviando PDF para impressora",
-  "printerName": "ELGIN i9",
-  "fileName": "sale-123.pdf",
-  "type": "sale_receipt",
-  "paperWidth": "80mm",
-  "error": null
-}
-```
-
-`status` pode ser `QUEUED`, `PROCESSING`, `PRINTING`, `COMPLETED` ou `FAILED`.
-Quando houver erro, `status` retorna `FAILED` e `error` traz a mensagem.
-
-### Status do dispositivo
-
-```http
-GET /agent/status
-```
-
-Resposta:
-
-```json
-{
-  "operatingSystem": {
-    "name": "Windows 10",
-    "version": "10.0",
-    "architecture": "amd64"
-  },
-  "hardware": {
-    "computerName": "PC-CAIXA-01",
-    "availableProcessors": 8,
-    "maxMemoryBytes": 4294967296,
-    "totalMemoryBytes": 268435456,
-    "freeMemoryBytes": 123456789
-  },
-  "internet": {
-    "connected": true,
-    "checkedUrl": "https://www.google.com/generate_204",
-    "latencyMs": 120,
-    "error": null
-  }
-}
-```
-
-### Verificar atualizacao OTA
-
-```http
-GET /agent/update/check
-```
-
-Configure antes:
-
-```properties
-agent.update.manifest-url=https://seu-dominio.com/farmaflow-agent/update.json
-```
-
-Manifesto esperado:
-
-```json
-{
-  "version": "0.0.2",
-  "downloadUrl": "https://seu-dominio.com/farmaflow-agent-0.0.2.exe",
-  "releaseNotes": "Correcoes e melhorias"
-}
-```
-
-Resposta:
-
-```json
-{
-  "currentVersion": "0.0.1-SNAPSHOT",
-  "configured": true,
-  "updateAvailable": true,
-  "latestVersion": "0.0.2",
-  "downloadUrl": "https://seu-dominio.com/farmaflow-agent-0.0.2.exe",
-  "releaseNotes": "Correcoes e melhorias",
-  "error": null
-}
-```
-
-## Gerar build
-
-Para gerar o `.jar` executavel:
-
-```powershell
-.\mvnw.cmd clean package
-```
-
-Arquivo gerado:
-
-```text
-target/farmaflow-agent-0.0.1-SNAPSHOT.jar
-```
-
-## Publicar `.jar` no GitHub Releases
-
-O projeto possui workflow de release em `.github/workflows/release.yml`.
-
-Para publicar automaticamente no GitHub Releases:
-
-1. Crie uma tag no formato `v*` (ex.: `v0.0.1`) e envie para o repositório.
-2. O workflow **Release JAR** irá executar `mvn clean package`.
-3. O arquivo `target/farmaflow-agent-*.jar` será anexado no release criado da tag.
-
-Para testar:
-
-```powershell
-javaw -jar target\farmaflow-agent-0.0.1-SNAPSHOT.jar
-```
-
-## Gerar executavel portatil
-
-Use o script:
-
-```powershell
-.\scripts\package-windows.ps1
-```
-
-Saida:
-
-```text
-dist-portable/FarmaFlowAgent/FarmaFlowAgent.exe
-```
-
-Distribua a pasta inteira `dist-portable/FarmaFlowAgent`, nao apenas o `.exe`,
-porque ela contem o runtime Java e os arquivos do app.
-
-## Gerar instalador Windows
-
-Instale o WiX Toolset e garanta que `candle.exe` e `light.exe` estejam no
-`PATH`.
-
-Depois rode:
-
-```powershell
-.\scripts\package-windows.ps1 -Installer
-```
-
-Saida esperada:
-
-```text
-dist-installer/FarmaFlowAgent-0.0.1.exe
-```
-
-## Iniciar junto com o Windows
-
-Como o agente usa tray, o ideal e iniciar no login do usuario, nao como servico.
-
-Crie um atalho para:
-
-```text
-dist-portable/FarmaFlowAgent/FarmaFlowAgent.exe
-```
-
-E coloque em:
-
-```text
-shell:startup
-```
-
-No Windows, pressione `Win + R`, digite `shell:startup` e copie o atalho para a
-pasta aberta.
-
-## Testes
-
-```powershell
-.\mvnw.cmd test
-```
-
-## Observacoes
-
-- O tray so aparece em ambiente grafico com suporte a `SystemTray`.
-- A checagem OTA atual apenas consulta o manifesto e informa se ha versao nova.
-- A instalacao automatica de update ainda precisa de uma estrategia de release,
-  assinatura/validacao e fluxo seguro de substituicao do executavel.
+O instalador é autocontido, não exige runtime .NET previamente instalado e
+configura a inicialização do agente no login do usuário.

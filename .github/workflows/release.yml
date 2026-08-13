@@ -1,32 +1,56 @@
-name: Release JAR
+name: Release Windows installer
 
 on:
   push:
-    tags:
-      - "v*"
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version without v prefix
+        required: true
 
 permissions:
   contents: write
 
 jobs:
   release:
-    runs-on: ubuntu-latest
-
+    runs-on: windows-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
         with:
-          distribution: temurin
-          java-version: "21"
-          cache: maven
-
-      - name: Build JAR
-        run: ./mvnw -B clean package --file pom.xml
-
+          dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: src/FarmaFlow.Agent/FarmaFlow.Agent.csproj
+      - name: Resolve version
+        id: version
+        shell: pwsh
+        run: |
+          $version = if ("${{ github.event_name }}" -eq "workflow_dispatch") { "${{ inputs.version }}" } else { "${{ github.ref_name }}".TrimStart('v') }
+          "value=$version" >> $env:GITHUB_OUTPUT
+      - name: Restore and build
+        run: dotnet build FarmaFlow.Agent.sln -c Release -p:Version=${{ steps.version.outputs.value }}
+      - name: Test
+        run: dotnet test FarmaFlow.Agent.sln -c Release --no-build
+      - name: Publish self-contained agent
+        run: dotnet publish src/FarmaFlow.Agent/FarmaFlow.Agent.csproj -c Release -r win-x64 --self-contained true -p:Version=${{ steps.version.outputs.value }} -o publish
+      - name: Build installer
+        shell: pwsh
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.value }}" installer\FarmaFlowAgent.iss'
+      - name: Create checksum
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash artifacts\FarmaFlowAgent-Setup.exe -Algorithm SHA256).Hash.ToLower()
+          "$hash  FarmaFlowAgent-Setup.exe" | Set-Content artifacts\SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FarmaFlowAgent-Setup-${{ steps.version.outputs.value }}
+          path: artifacts/
       - name: Publish GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
-          files: target/farmaflow-agent-*.jar
+          generate_release_notes: true
+          files: |
+            artifacts/FarmaFlowAgent-Setup.exe
+            artifacts/SHA256SUMS.txt
