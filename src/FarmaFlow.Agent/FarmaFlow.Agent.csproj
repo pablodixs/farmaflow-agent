@@ -12,7 +12,7 @@
     <PublishSingleFile>true</PublishSingleFile>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
     <PublishTrimmed>false</PublishTrimmed>
-    <ApplicationIcon>..\..\main\resources\ico.ico</ApplicationIcon>
+    <ApplicationIcon>..\main\resources\ico.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
@@ -20,6 +20,6 @@
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\..\main\resources\ico.ico" Link="Assets\farmaflow.ico" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\main\resources\ico.ico" Link="Assets\farmaflow.ico" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>
