@@ -1,4 +1,5 @@
 using FarmaFlow.Agent.Services;
+using Xunit;
 
 namespace FarmaFlow.Agent.Tests;
 
