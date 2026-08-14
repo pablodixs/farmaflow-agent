@@ -20,6 +20,6 @@
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <Content Include="..\main\resources\ico.ico" Link="Assets\farmaflow.ico" CopyToOutputDirectory="PreserveNewest" />
+    <EmbeddedResource Include="..\main\resources\ico.ico" LogicalName="FarmaFlow.Agent.Assets.farmaflow.ico" />
   </ItemGroup>
 </Project>

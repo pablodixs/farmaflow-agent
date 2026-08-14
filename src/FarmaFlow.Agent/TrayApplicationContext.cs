@@ -5,6 +5,7 @@ namespace FarmaFlow.Agent;
 
 public sealed class TrayApplicationContext : ApplicationContext
 {
+    private const string TrayIconResource = "FarmaFlow.Agent.Assets.farmaflow.ico";
     private readonly NotifyIcon _tray;
 
     public TrayApplicationContext(AgentOptions options, PairingService pairing, AgentStore store)
@@ -20,7 +21,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _tray = new NotifyIcon
         {
             Text = "FarmaFlow Agent",
-            Icon = new Icon(Path.Combine(AppContext.BaseDirectory, "Assets", "farmaflow.ico")),
+            Icon = LoadTrayIcon(),
             Visible = true,
             ContextMenuStrip = menu
         };
@@ -28,6 +29,25 @@ public sealed class TrayApplicationContext : ApplicationContext
     }
 
     protected override void ExitThreadCore() { _tray.Visible = false; _tray.Dispose(); base.ExitThreadCore(); }
+
+    internal static Icon LoadTrayIcon()
+    {
+        try
+        {
+            using var stream = typeof(TrayApplicationContext).Assembly.GetManifestResourceStream(TrayIconResource);
+            if (stream is not null)
+            {
+                using var icon = new Icon(stream);
+                return (Icon)icon.Clone();
+            }
+        }
+        catch (Exception exception)
+        {
+            StartupDiagnostics.Write(exception, "Não foi possível carregar o ícone incorporado.");
+        }
+
+        return SystemIcons.Application;
+    }
 
     private static void Open(string url) => System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(url) { UseShellExecute = true });
 
