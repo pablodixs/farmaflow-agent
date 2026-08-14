@@ -23,12 +23,14 @@
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\main\resources\ico.ico" LogicalName="FarmaFlow.Agent.Assets.farmaflow.ico" />
-    <!-- PdfiumPrinter resolves the native binary from this physical path. It
-         cannot load it from inside the single-file executable. -->
-    <Content Include="$(Pkgbblanchon_PDFium_Win32)\runtimes\win-x64\native\pdfium.dll"
-             Link="runtimes\win-x64\native\pdfium.dll"
-             CopyToOutputDirectory="PreserveNewest"
-             CopyToPublishDirectory="PreserveNewest"
-             ExcludeFromSingleFile="true" />
   </ItemGroup>
+  <!-- PdfiumPrinter resolves the native binary from this physical path. It
+       cannot load it from inside the single-file executable, so copy it after
+       bundling has completed. -->
+  <Target Name="CopyPdfiumNativeLibrary" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)runtimes\win-x64\native" />
+    <Copy SourceFiles="$(Pkgbblanchon_PDFium_Win32)\runtimes\win-x64\native\pdfium.dll"
+          DestinationFolder="$(PublishDir)runtimes\win-x64\native"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>
