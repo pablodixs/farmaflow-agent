@@ -34,6 +34,11 @@ jobs:
         run: dotnet test FarmaFlow.Agent.sln -c Release --no-build
       - name: Publish self-contained agent
         run: dotnet publish src/FarmaFlow.Agent/FarmaFlow.Agent.csproj -c Release -r win-x64 --self-contained true -p:Version=${{ steps.version.outputs.value }} -o publish
+      - name: Verify native PDF printing library
+        shell: pwsh
+        run: |
+          $pdfium = "publish\runtimes\win-x64\native\pdfium.dll"
+          if (-not (Test-Path $pdfium)) { throw "Missing native PDFium library: $pdfium" }
       - name: Smoke test published executable
         run: .\publish\FarmaFlowAgent.exe --smoke-test
       - name: Build installer
