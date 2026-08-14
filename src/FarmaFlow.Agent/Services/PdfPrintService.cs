@@ -1,5 +1,5 @@
 using System.Collections.Concurrent;
-using System.Diagnostics;
+using PdfiumPrinter;
 
 namespace FarmaFlow.Agent.Services;
 
@@ -34,15 +34,12 @@ public sealed class PdfPrintService(PrintingService printing)
             _jobs[id] = new(id, "PROCESSING", 25, "Preparando PDF", null);
             await File.WriteAllBytesAsync(path, data);
             _jobs[id] = new(id, "PRINTING", 70, "Enviando PDF para a impressora", null);
-            using var process = Process.Start(new ProcessStartInfo(path)
-            {
-                Verb = "printto",
-                Arguments = $"\"{printerName}\"",
-                UseShellExecute = true,
-                CreateNoWindow = true
-            }) ?? throw new InvalidOperationException("Nenhum visualizador de PDF disponível para impressão.");
-            await process.WaitForExitAsync();
-            _jobs[id] = new(id, "COMPLETED", 100, "PDF enviado para impressão", null);
+            // Print through PDFium instead of the Windows `printto` shell verb.
+            // `printto` depends on whichever PDF viewer happens to be installed
+            // and often exits successfully without creating a spooler job.
+            var printer = new PdfPrinter(printerName);
+            await Task.Run(() => printer.Print(path));
+            _jobs[id] = new(id, "COMPLETED", 100, "PDF enviado para a fila de impressão", null);
         }
         catch (Exception exception)
         {
