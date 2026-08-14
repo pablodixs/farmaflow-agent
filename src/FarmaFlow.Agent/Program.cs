@@ -4,10 +4,19 @@ using FarmaFlow.Agent.Services;
 using Microsoft.AspNetCore.Http.Features;
 using System.Runtime.InteropServices;
 
-ApplicationConfiguration.Initialize();
-System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+try
+{
+    ApplicationConfiguration.Initialize();
+    System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+    Application.ThreadException += (_, eventArgs) =>
+        StartupDiagnostics.ReportFatal(eventArgs.Exception, "Falha não tratada na interface do agente.");
+    AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
+    {
+        if (eventArgs.ExceptionObject is Exception exception)
+            StartupDiagnostics.ReportFatal(exception, "Falha não tratada no agente.");
+    };
 
-var builder = WebApplication.CreateBuilder(args);
+    var builder = WebApplication.CreateBuilder(args);
 var options = builder.Configuration.GetSection("Agent").Get<AgentOptions>() ?? new AgentOptions();
 builder.WebHost.UseUrls($"http://127.0.0.1:{options.Port}");
 builder.Services.AddSingleton(options);
@@ -83,10 +92,32 @@ app.MapGet("/print/pdf/{jobId}/status", (string jobId, PdfPrintService pdf) =>
     pdf.Get(jobId) is { } job ? Results.Ok(job) : Results.NotFound());
 app.MapPost("/offline/operations", (OfflineOperation request, AgentStore store) => { store.Enqueue(request.Type, request.Payload); return Results.Accepted(value: new { queued = true }); });
 
-await app.StartAsync();
-var tray = new TrayApplicationContext(options, app.Services.GetRequiredService<PairingService>(), app.Services.GetRequiredService<AgentStore>());
-Application.Run(tray);
-await app.StopAsync();
+    await app.StartAsync();
+    if (args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase))
+    {
+        using var smokeClient = new HttpClient();
+        using var smokeResponse = await smokeClient.GetAsync($"http://127.0.0.1:{options.Port}/agent/health");
+        smokeResponse.EnsureSuccessStatusCode();
+        await app.StopAsync();
+        return;
+    }
+
+    var tray = new TrayApplicationContext(options, app.Services.GetRequiredService<PairingService>(), app.Services.GetRequiredService<AgentStore>());
+    Application.Run(tray);
+    await app.StopAsync();
+}
+catch (Exception exception)
+{
+    if (args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase))
+    {
+        StartupDiagnostics.Write(exception, "Falha no smoke test do FarmaFlow Agent.");
+        Environment.ExitCode = 1;
+    }
+    else
+    {
+        StartupDiagnostics.ReportFatal(exception, "Falha ao iniciar o FarmaFlow Agent.");
+    }
+}
 
 internal sealed record HandshakeRequest(string Challenge);
 internal sealed record PrintTestRequest(string PrinterName, string? PaperWidth);
