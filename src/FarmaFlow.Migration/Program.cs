@@ -485,10 +485,10 @@ static bool JsonEquivalent(string left, string right)
 {
     using JsonDocument leftDocument = JsonDocument.Parse(left);
     using JsonDocument rightDocument = JsonDocument.Parse(right);
-    return JsonEquivalent(leftDocument.RootElement, rightDocument.RootElement);
+    return JsonElementsEquivalent(leftDocument.RootElement, rightDocument.RootElement);
 }
 
-static bool JsonEquivalent(JsonElement left, JsonElement right)
+static bool JsonElementsEquivalent(JsonElement left, JsonElement right)
 {
     if (left.ValueKind != right.ValueKind)
         return false;
@@ -511,7 +511,7 @@ static bool JsonArraysEquivalent(JsonElement left, JsonElement right)
     JsonElement.ArrayEnumerator rightItems = right.EnumerateArray();
     while (leftItems.MoveNext())
     {
-        if (!rightItems.MoveNext() || !JsonEquivalent(leftItems.Current, rightItems.Current))
+        if (!rightItems.MoveNext() || !JsonElementsEquivalent(leftItems.Current, rightItems.Current))
             return false;
     }
     return !rightItems.MoveNext();
@@ -525,7 +525,7 @@ static bool JsonObjectsEquivalent(JsonElement left, JsonElement right)
         .ToDictionary(property => property.Name, property => property.Value, StringComparer.Ordinal);
     return leftProperties.Count == rightProperties.Count && leftProperties.All(property =>
         rightProperties.TryGetValue(property.Key, out JsonElement rightValue) &&
-        JsonEquivalent(property.Value, rightValue));
+        JsonElementsEquivalent(property.Value, rightValue));
 }
 
 static async Task<string?> ScalarAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, string sql)
