@@ -485,7 +485,47 @@ static bool JsonEquivalent(string left, string right)
 {
     using JsonDocument leftDocument = JsonDocument.Parse(left);
     using JsonDocument rightDocument = JsonDocument.Parse(right);
-    return JsonElement.DeepEquals(leftDocument.RootElement, rightDocument.RootElement);
+    return JsonEquivalent(leftDocument.RootElement, rightDocument.RootElement);
+}
+
+static bool JsonEquivalent(JsonElement left, JsonElement right)
+{
+    if (left.ValueKind != right.ValueKind)
+        return false;
+
+    return left.ValueKind switch
+    {
+        JsonValueKind.Object => JsonObjectsEquivalent(left, right),
+        JsonValueKind.Array => JsonArraysEquivalent(left, right),
+        JsonValueKind.String => string.Equals(left.GetString(), right.GetString(), StringComparison.Ordinal),
+        JsonValueKind.Number => string.Equals(left.GetRawText(), right.GetRawText(), StringComparison.Ordinal),
+        JsonValueKind.True or JsonValueKind.False => left.GetBoolean() == right.GetBoolean(),
+        JsonValueKind.Null or JsonValueKind.Undefined => true,
+        _ => false
+    };
+}
+
+static bool JsonArraysEquivalent(JsonElement left, JsonElement right)
+{
+    JsonElement.ArrayEnumerator leftItems = left.EnumerateArray();
+    JsonElement.ArrayEnumerator rightItems = right.EnumerateArray();
+    while (leftItems.MoveNext())
+    {
+        if (!rightItems.MoveNext() || !JsonEquivalent(leftItems.Current, rightItems.Current))
+            return false;
+    }
+    return !rightItems.MoveNext();
+}
+
+static bool JsonObjectsEquivalent(JsonElement left, JsonElement right)
+{
+    Dictionary<string, JsonElement> leftProperties = left.EnumerateObject()
+        .ToDictionary(property => property.Name, property => property.Value, StringComparer.Ordinal);
+    Dictionary<string, JsonElement> rightProperties = right.EnumerateObject()
+        .ToDictionary(property => property.Name, property => property.Value, StringComparer.Ordinal);
+    return leftProperties.Count == rightProperties.Count && leftProperties.All(property =>
+        rightProperties.TryGetValue(property.Key, out JsonElement rightValue) &&
+        JsonEquivalent(property.Value, rightValue));
 }
 
 static async Task<string?> ScalarAsync(NpgsqlConnection connection, NpgsqlTransaction? transaction, string sql)
