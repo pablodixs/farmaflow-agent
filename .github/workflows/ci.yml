@@ -13,12 +13,10 @@ jobs:
   build-windows:
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
-          cache: true
-          cache-dependency-path: src/FarmaFlow.Agent/FarmaFlow.Agent.csproj
       - name: Restore
         run: dotnet restore FarmaFlow.Agent.sln
       - name: Build
@@ -27,6 +25,10 @@ jobs:
         run: dotnet test FarmaFlow.Agent.sln -c Release --no-build
       - name: Publish win-x64
         run: dotnet publish src/FarmaFlow.Agent/FarmaFlow.Agent.csproj -c Release -r win-x64 --self-contained true -o publish
+      - name: Publish server host win-x64
+        run: dotnet publish src/FarmaFlow.Server.Host/FarmaFlow.Server.Host.csproj -c Release -r win-x64 --self-contained true -o publish-server-host
+      - name: Publish migration tool win-x64
+        run: dotnet publish src/FarmaFlow.Migration/FarmaFlow.Migration.csproj -c Release -r win-x64 --self-contained true -o publish-migration
       - name: Verify native PDF printing library
         shell: pwsh
         run: |
@@ -36,5 +38,13 @@ jobs:
         run: .\publish\FarmaFlowAgent.exe --smoke-test
       - uses: actions/upload-artifact@v4
         with:
-          name: FarmaFlowAgent-win-x64
+          name: FarmaFlow-Estacao-win-x64
           path: publish/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FarmaFlow-Server-Host-win-x64
+          path: publish-server-host/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: FarmaFlow-Migration-win-x64
+          path: publish-migration/

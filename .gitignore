@@ -29,5 +29,13 @@ build/
 !**/src/main/**/build/
 !**/src/test/**/build/
 
+# Release staging
+/artifacts/
+/publish/
+/publish-server/
+/publish-server-host/
+/publish-migration/
+/.runtime-cache/
+
 ### VS Code ###
 .vscode/

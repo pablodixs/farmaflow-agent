@@ -17,33 +17,41 @@ try
     };
 
     var builder = WebApplication.CreateBuilder(args);
-var options = builder.Configuration.GetSection("Agent").Get<AgentOptions>() ?? new AgentOptions();
-builder.WebHost.UseUrls($"http://127.0.0.1:{options.Port}");
-builder.Services.AddSingleton(options);
-builder.Services.AddSingleton<AgentStore>();
-builder.Services.AddSingleton<LocalAccessService>();
-builder.Services.AddSingleton<PrintingService>();
-builder.Services.AddSingleton<PdfPrintService>();
-builder.Services.AddSingleton<HttpClient>();
-builder.Services.AddSingleton<PairingService>();
-builder.Services.AddHostedService<HeartbeatWorker>();
-builder.Services.Configure<FormOptions>(value => value.MultipartBodyLengthLimit = 30 * 1024 * 1024);
-builder.Services.AddCors(cors => cors.AddDefaultPolicy(policy => policy.WithOrigins(options.AllowedOrigins).AllowAnyHeader().AllowAnyMethod()));
-
-var app = builder.Build();
-app.UseCors();
-
-var access = app.Services.GetRequiredService<LocalAccessService>();
-app.Use(async (context, next) =>
-{
-    var publicPath = context.Request.Path == "/agent/health" || context.Request.Path == "/agent/local/handshake";
-    if (!publicPath && !access.IsValid(context.Request.Headers.Authorization))
+    var options = builder.Configuration.GetSection("Agent").Get<AgentOptions>() ?? new AgentOptions();
+    var connections = new DesktopConnectionStore(options);
+    builder.WebHost.UseUrls($"http://127.0.0.1:{options.Port}");
+    builder.Services.AddSingleton(options);
+    builder.Services.AddSingleton(connections);
+    builder.Services.AddSingleton<AgentStore>();
+    builder.Services.AddSingleton<LocalAccessService>();
+    builder.Services.AddSingleton<PrintingService>();
+    builder.Services.AddSingleton<PdfPrintService>();
+    builder.Services.AddSingleton(new HttpClient(new HttpClientHandler
     {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return;
-    }
-    await next();
-});
+        ServerCertificateCustomValidationCallback = connections.IsValidCertificate
+    }));
+    builder.Services.AddSingleton<PairingService>();
+    builder.Services.AddHostedService<HeartbeatWorker>();
+    builder.Services.Configure<FormOptions>(value => value.MultipartBodyLengthLimit = 30 * 1024 * 1024);
+    builder.Services.AddCors(cors => cors.AddDefaultPolicy(policy => policy
+        .SetIsOriginAllowed(connections.IsAllowedOrigin)
+        .AllowAnyHeader()
+        .AllowAnyMethod()));
+
+    var app = builder.Build();
+    app.UseCors();
+
+    var access = app.Services.GetRequiredService<LocalAccessService>();
+    app.Use(async (context, next) =>
+    {
+        var publicPath = context.Request.Path == "/agent/health" || context.Request.Path == "/agent/local/handshake";
+        if (!publicPath && !access.IsValid(context.Request.Headers.Authorization))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+        await next();
+    });
 
 app.MapGet("/agent/health", (AgentStore store) => Results.Ok(new
 {
@@ -102,7 +110,10 @@ app.MapPost("/offline/operations", (OfflineOperation request, AgentStore store) 
         return;
     }
 
-    var tray = new TrayApplicationContext(options, app.Services.GetRequiredService<PairingService>(), app.Services.GetRequiredService<AgentStore>());
+    var tray = new TrayApplicationContext(
+        app.Services.GetRequiredService<DesktopConnectionStore>(),
+        app.Services.GetRequiredService<PairingService>(),
+        app.Services.GetRequiredService<AgentStore>());
     Application.Run(tray);
     await app.StopAsync();
 }

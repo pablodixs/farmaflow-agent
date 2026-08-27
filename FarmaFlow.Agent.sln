@@ -6,6 +6,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FarmaFlow.Agent", "src\Farm
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FarmaFlow.Agent.Tests", "tests\FarmaFlow.Agent.Tests\FarmaFlow.Agent.Tests.csproj", "{47FBEB50-39A1-4B49-98A8-E2E0788869A1}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FarmaFlow.Server.Host", "src\FarmaFlow.Server.Host\FarmaFlow.Server.Host.csproj", "{51DDCFCB-4CE1-4A0E-B4B8-56904553A175}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FarmaFlow.Migration", "src\FarmaFlow.Migration\FarmaFlow.Migration.csproj", "{6015606F-CC0D-4766-8451-4B5AF4B281F0}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,5 +24,13 @@ Global
 		{47FBEB50-39A1-4B49-98A8-E2E0788869A1}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{47FBEB50-39A1-4B49-98A8-E2E0788869A1}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{47FBEB50-39A1-4B49-98A8-E2E0788869A1}.Release|Any CPU.Build.0 = Release|Any CPU
+		{51DDCFCB-4CE1-4A0E-B4B8-56904553A175}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{51DDCFCB-4CE1-4A0E-B4B8-56904553A175}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{51DDCFCB-4CE1-4A0E-B4B8-56904553A175}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{51DDCFCB-4CE1-4A0E-B4B8-56904553A175}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6015606F-CC0D-4766-8451-4B5AF4B281F0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6015606F-CC0D-4766-8451-4B5AF4B281F0}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6015606F-CC0D-4766-8451-4B5AF4B281F0}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6015606F-CC0D-4766-8451-4B5AF4B281F0}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
