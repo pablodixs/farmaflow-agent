@@ -122,7 +122,7 @@ async Task ExportFullAsync(IReadOnlyDictionary<string, string> values)
         byte[] tag = new byte[16];
         byte[] ciphertext = new byte[plaintext.Length];
         byte[] key = Rfc2898DeriveBytes.Pbkdf2(packagePassword, salt, 600_000, HashAlgorithmName.SHA256, 32);
-        using (var aes = new AesGcm(key, tag.Length)) aes.Encrypt(nonce, plaintext, ciphertext, magic);
+        using (var aes = new AesGcm(key, tag.Length)) aes.Encrypt(nonce, plaintext, ciphertext, tag, magic);
         CryptographicOperations.ZeroMemory(key);
         CryptographicOperations.ZeroMemory(plaintext);
 
