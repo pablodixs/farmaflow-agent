@@ -42,7 +42,14 @@ internal sealed class LocalPostgresCluster : IAsyncDisposable
                 cancellationToken: cancellationToken);
             if (init.ExitCode != 0) throw new InvalidOperationException($"Não foi possível preparar o PostgreSQL temporário: {init.Error}");
             await File.AppendAllTextAsync(Path.Combine(root, "postgresql.conf"), $"\nlisten_addresses = '127.0.0.1'\nport = {port}\npassword_encryption = 'scram-sha-256'\n", cancellationToken);
-            await File.WriteAllTextAsync(Path.Combine(root, "pg_hba.conf"), "local all all scram-sha-256\nhost all all 127.0.0.1/32 scram-sha-256\n", Encoding.UTF8, cancellationToken);
+            // PostgreSQL's HBA parser does not ignore a UTF-8 BOM and reports
+            // the first connection type as "?local". Always write this config
+            // as UTF-8 without BOM on Windows.
+            await File.WriteAllTextAsync(
+                Path.Combine(root, "pg_hba.conf"),
+                "local all all scram-sha-256\nhost all all 127.0.0.1/32 scram-sha-256\n",
+                new UTF8Encoding(encoderShouldEmitUTF8Identifier: false),
+                cancellationToken);
             string serverLog = Path.Combine(root, "postgres.log");
             ProcessResult start = await ProcessRunner.RunAsync(
                 Path.Combine(postgresBin, "pg_ctl.exe"),
