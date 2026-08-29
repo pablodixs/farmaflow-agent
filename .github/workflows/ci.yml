@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+env:
+  POSTGRES_VERSION: 17.11-1
+  POSTGRES_URL: https://get.enterprisedb.com/postgresql/postgresql-17.11-1-windows-x64-binaries.zip
+  POSTGRES_SHA256: 6eabdf00d2893713b75db4336a23c3fdf505f056e217ec6e2e95d901750cfea3
+
 jobs:
   build-windows:
     runs-on: windows-latest
@@ -50,6 +55,23 @@ jobs:
         run: dotnet publish src/FarmaFlow.Migration/FarmaFlow.Migration.csproj -c Release -r win-x64 --self-contained true -o publish-migration
       - name: Publish migration assistant win-x64
         run: dotnet publish src/FarmaFlow.Migration.Desktop/FarmaFlow.Migration.Desktop.csproj -c Release -r win-x64 --self-contained true -o publish-migration-desktop
+      - name: Include PostgreSQL 17 in migration artifact
+        shell: pwsh
+        run: |
+          $archive = Join-Path $env:RUNNER_TEMP "postgresql-$env:POSTGRES_VERSION-windows-x64-binaries.zip"
+          Invoke-WebRequest -Uri $env:POSTGRES_URL -OutFile $archive
+          $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($hash -ne $env:POSTGRES_SHA256) { throw "SHA-256 do PostgreSQL não confere: $hash" }
+          $extract = Join-Path $env:RUNNER_TEMP "farmaflow-postgres"
+          if (Test-Path $extract) { Remove-Item $extract -Recurse -Force }
+          Expand-Archive -Path $archive -DestinationPath $extract -Force
+          $root = Get-ChildItem $extract -Directory | Select-Object -First 1
+          if ($null -eq $root -or -not (Test-Path (Join-Path $root.FullName "bin\pg_restore.exe"))) {
+            throw "O ZIP do PostgreSQL não contém bin\pg_restore.exe."
+          }
+          New-Item -ItemType Directory -Force -Path publish-migration\postgres | Out-Null
+          Copy-Item (Join-Path $root.FullName "*") publish-migration\postgres -Recurse -Force
+          if (-not (Test-Path publish-migration\postgres\bin\initdb.exe)) { throw "initdb.exe não foi incluído no artifact." }
       - name: Explain migration artifact
         shell: pwsh
         run: |
@@ -61,8 +83,9 @@ jobs:
           FarmaFlow.Migration.exe é apenas a ferramenta CLI de contingência;
           ao clicar duas vezes, o console pode fechar imediatamente depois do help.
 
-          O instalador completo com PostgreSQL 17 portátil é publicado na release
-          como FarmaFlow-Migracao-Setup.exe e no artifact FarmaFlow-Windows-<versão>.
+          Este artifact inclui PostgreSQL 17 portátil para o ensaio. O instalador
+          completo também é publicado na release como FarmaFlow-Migracao-Setup.exe
+          e no artifact FarmaFlow-Windows-<versão>.
           "@ | Set-Content publish-migration\LEIA-ME.txt -Encoding UTF8
       - name: Verify native PDF printing library
         shell: pwsh

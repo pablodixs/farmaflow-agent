@@ -120,7 +120,7 @@ Uma tag `vX.Y.Z` também executa o workflow e cria uma GitHub Release. A execuç
 > O artifact `FarmaFlow-Migration-win-x64` da CI é diferente do instalador de
 > release: ele contém `FarmaFlow.Migration.exe` (CLI de contingência) e,
 > a partir das próximas execuções, `FarmaFlowMigracaoSetup.exe` (assistente de
-> validação). O instalador normal chama-se exatamente
+> validação, com PostgreSQL 17 portátil). O instalador normal chama-se exatamente
 > `FarmaFlow-Migracao-Setup.exe` e fica no artifact `FarmaFlow-Windows-<versão>`.
 
 Os artifacts `FarmaFlow-Estacao-win-x64` e `FarmaFlow-Server-Host-win-x64`
