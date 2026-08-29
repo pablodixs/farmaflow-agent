@@ -238,6 +238,7 @@ jobs:
           if ($process.ExitCode -ne 0) { throw "Smoke test da estação falhou." }
 
       - name: Compile and sign installers
+        timeout-minutes: 25
         shell: pwsh
         env:
           WINDOWS_SIGNING_CERT_BASE64: ${{ secrets.WINDOWS_SIGNING_CERT_BASE64 }}

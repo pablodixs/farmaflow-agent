@@ -13,8 +13,10 @@ OutputDir=..\artifacts
 OutputBaseFilename=FarmaFlow-Server-Setup
 SetupIconFile=..\src\main\resources\ico.ico
 UninstallDisplayIcon={app}\FarmaFlowServerHost.exe
-Compression=lzma2
-SolidCompression=yes
+; The payload already contains compressed JARs and runtime binaries. ZIP avoids the
+; very slow single-stream LZMA2 recompression on GitHub's Windows runners.
+Compression=zip
+SolidCompression=no
 PrivilegesRequired=admin
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
