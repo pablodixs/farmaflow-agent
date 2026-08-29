@@ -117,6 +117,17 @@ Sem esses secrets de assinatura, os instaladores são gerados sem Authenticode. 
 
 Uma tag `vX.Y.Z` também executa o workflow e cria uma GitHub Release. A execução manual mantém o artifact por 30 dias.
 
+> O artifact `FarmaFlow-Migration-win-x64` da CI é diferente do instalador de
+> release: ele contém `FarmaFlow.Migration.exe` (CLI de contingência) e,
+> a partir das próximas execuções, `FarmaFlowMigracaoSetup.exe` (assistente de
+> validação). O instalador normal chama-se exatamente
+> `FarmaFlow-Migracao-Setup.exe` e fica no artifact `FarmaFlow-Windows-<versão>`.
+
+Os artifacts `FarmaFlow-Estacao-win-x64` e `FarmaFlow-Server-Host-win-x64`
+também são componentes brutos para diagnóstico. O primeiro executa apenas o
+agente de tray; o segundo é o Host que depende de todo o runtime do servidor.
+Nenhum dos dois deve ser aberto por duplo clique para uma instalação normal.
+
 ### 5.3 Conferir o bundle
 
 O bundle deve conter:

@@ -27,8 +27,43 @@ jobs:
         run: dotnet publish src/FarmaFlow.Agent/FarmaFlow.Agent.csproj -c Release -r win-x64 --self-contained true -o publish
       - name: Publish server host win-x64
         run: dotnet publish src/FarmaFlow.Server.Host/FarmaFlow.Server.Host.csproj -c Release -r win-x64 --self-contained true -o publish-server-host
+      - name: Explain runtime artifacts
+        shell: pwsh
+        run: |
+          @"
+          FarmaFlow — artefacto de validação da CI
+
+          FarmaFlowAgent.exe é o agente de tray da estação; ele fica na bandeja
+          do Windows e não abre uma janela principal ao ser executado.
+          Para uso normal, baixe o instalador FarmaFlow-Estacao-Setup.exe da
+          release ou do artifact FarmaFlow-Windows-<versão>.
+          "@ | Set-Content publish\LEIA-ME.txt -Encoding UTF8
+          @"
+          FarmaFlow — artefacto de validação da CI
+
+          FarmaFlowServerHost.exe é um serviço/supervisor e não é um instalador.
+          Ele depende de PostgreSQL, Java, Node, backend e frontend preparados
+          no mesmo diretório. Para uso normal, baixe FarmaFlow-Server-Setup.exe
+          da release ou do artifact FarmaFlow-Windows-<versão>.
+          "@ | Set-Content publish-server-host\LEIA-ME.txt -Encoding UTF8
       - name: Publish migration tool win-x64
         run: dotnet publish src/FarmaFlow.Migration/FarmaFlow.Migration.csproj -c Release -r win-x64 --self-contained true -o publish-migration
+      - name: Publish migration assistant win-x64
+        run: dotnet publish src/FarmaFlow.Migration.Desktop/FarmaFlow.Migration.Desktop.csproj -c Release -r win-x64 --self-contained true -o publish-migration-desktop
+      - name: Explain migration artifact
+        shell: pwsh
+        run: |
+          Copy-Item publish-migration-desktop\FarmaFlowMigracaoSetup.exe publish-migration\FarmaFlowMigracaoSetup.exe -Force
+          @"
+          FarmaFlow — artefacto de validação da CI
+
+          Para abrir uma janela, execute FarmaFlowMigracaoSetup.exe.
+          FarmaFlow.Migration.exe é apenas a ferramenta CLI de contingência;
+          ao clicar duas vezes, o console pode fechar imediatamente depois do help.
+
+          O instalador completo com PostgreSQL 17 portátil é publicado na release
+          como FarmaFlow-Migracao-Setup.exe e no artifact FarmaFlow-Windows-<versão>.
+          "@ | Set-Content publish-migration\LEIA-ME.txt -Encoding UTF8
       - name: Verify native PDF printing library
         shell: pwsh
         run: |

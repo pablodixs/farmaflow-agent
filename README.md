@@ -58,6 +58,11 @@ para configuração de acesso entre repositórios e assinatura Authenticode.
 O bundle também publica `FarmaFlow-Migracao-Setup.exe`, o assistente gráfico
 para preparar o ensaio/corte sem executar PowerShell manualmente.
 
+Não use `FarmaFlow.Migration.exe` por duplo clique: ele é o CLI de contingência
+e o console fecha após exibir a ajuda. No Windows, abra o instalador exato
+`FarmaFlow-Migracao-Setup.exe` baixado de uma release, ou
+`FarmaFlowMigracaoSetup.exe` no artifact de validação da CI.
+
 Para a operação normal, comece pelo [guia rápido local](docs/GUIA-RAPIDO-LOCAL.md).
 
 O procedimento completo de build, ensaio, migração do Supabase, instalação,
