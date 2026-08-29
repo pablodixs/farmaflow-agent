@@ -28,13 +28,13 @@ Source: "activate-server.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 Source: "export-recovery-key.ps1"; DestDir: "{app}\installer"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\Certificado do FarmaFlow Server"; Filename: "notepad.exe"; Parameters: "\"{commonappdata}\FarmaFlow\Server\certificate.sha256.txt\""
-Name: "{group}\Ativar FarmaFlow após migração"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File \"{app}\installer\activate-server.ps1\" -InstallDirectory \"{app}\""
+Name: "{group}\Certificado do FarmaFlow Server"; Filename: "notepad.exe"; Parameters: """{commonappdata}\FarmaFlow\Server\certificate.sha256.txt"""
+Name: "{group}\Ativar FarmaFlow após migração"; Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\activate-server.ps1"" -InstallDirectory ""{app}"""
 Name: "{group}\Reparar FarmaFlow Server"; Filename: "{app}\FarmaFlowServerSetup.exe"; Parameters: "--repair"
 
 [Run]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File \"{app}\installer\bootstrap-server.ps1\" -InstallDirectory \"{app}\""; StatusMsg: "Inicializando PostgreSQL e serviços locais..."; Flags: runhidden waituntilterminated
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\bootstrap-server.ps1"" -InstallDirectory ""{app}"""; StatusMsg: "Inicializando PostgreSQL e serviços locais..."; Flags: runhidden waituntilterminated
 Filename: "{app}\FarmaFlowServerSetup.exe"; Description: "Configurar este servidor"; StatusMsg: "Abrindo assistente do servidor..."; Flags: waituntilterminated postinstall skipifsilent
 
 [UninstallRun]
-Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File \"{app}\installer\uninstall-server.ps1\""; Flags: runhidden waituntilterminated; RunOnceId: "StopFarmaFlowServices"
+Filename: "powershell.exe"; Parameters: "-NoProfile -ExecutionPolicy Bypass -File ""{app}\installer\uninstall-server.ps1"""; Flags: runhidden waituntilterminated; RunOnceId: "StopFarmaFlowServices"

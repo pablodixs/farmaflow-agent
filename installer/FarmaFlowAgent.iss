@@ -28,11 +28,11 @@ Name: "{group}\FarmaFlow Estação"; Filename: "{app}\FarmaFlowAgent.exe"
 Name: "{autodesktop}\FarmaFlow"; Filename: "{app}\FarmaFlowAgent.exe"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FarmaFlowAgent"; ValueData: "\"{app}\FarmaFlowAgent.exe\""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FarmaFlowAgent"; ValueData: """{app}\FarmaFlowAgent.exe"""; Flags: uninsdeletevalue
 Root: HKCU; Subkey: "Software\Classes\.ffstation"; ValueType: string; ValueData: "FarmaFlowStationFile"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\FarmaFlowStationFile"; ValueType: string; ValueData: "FarmaFlow station configuration"; Flags: uninsdeletekey
 Root: HKCU; Subkey: "Software\Classes\FarmaFlowStationFile\DefaultIcon"; ValueType: string; ValueData: "{app}\FarmaFlowAgent.exe,0"
-Root: HKCU; Subkey: "Software\Classes\FarmaFlowStationFile\shell\open\command"; ValueType: string; ValueData: "\"{app}\FarmaFlowAgent.exe\" \"%1\""
+Root: HKCU; Subkey: "Software\Classes\FarmaFlowStationFile\shell\open\command"; ValueType: string; ValueData: """{app}\FarmaFlowAgent.exe"" ""%1"""
 
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
