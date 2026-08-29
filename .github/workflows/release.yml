@@ -250,8 +250,9 @@ jobs:
             $certificatePath,
             $env:WINDOWS_SIGNING_CERT_PASSWORD,
             [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+          $isSelfSigned = $signingCertificate.Subject -eq $signingCertificate.Issuer
           $trustedRootStore = $null
-          if ($signingCertificate.Subject -eq $signingCertificate.Issuer) {
+          if ($isSelfSigned) {
             $trustedRootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
               [System.Security.Cryptography.X509Certificates.StoreName]::Root,
               [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
@@ -265,28 +266,45 @@ jobs:
           if ($null -eq $signTool) { throw "signtool.exe x64 não encontrado." }
 
           function Sign-Installer([string]$path) {
-            & $signTool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
-              /f $certificatePath /p $env:WINDOWS_SIGNING_CERT_PASSWORD $path
+            $name = Split-Path $path -Leaf
+            Write-Host "Assinando $name..."
+            $startedAt = Get-Date
+            if ($isSelfSigned) {
+              # A test certificate has no useful public timestamp chain. Avoid a
+              # network dependency that can block the Windows runner indefinitely.
+              & $signTool.FullName sign /fd SHA256 `
+                /f $certificatePath /p $env:WINDOWS_SIGNING_CERT_PASSWORD $path
+            } else {
+              & $signTool.FullName sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 `
+                /f $certificatePath /p $env:WINDOWS_SIGNING_CERT_PASSWORD $path
+            }
             if ($LASTEXITCODE -ne 0) { throw "Assinatura falhou: $path" }
             $signature = Get-AuthenticodeSignature $path
             if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Thumbprint -ne $signingCertificate.Thumbprint) {
               throw "Assinatura Authenticode inválida em $path`: $($signature.Status)"
             }
+            Write-Host "$name assinado em $([Math]::Round(((Get-Date) - $startedAt).TotalSeconds, 1)) s."
           }
 
           $pushed = $false
           try {
             Push-Location agent
             $pushed = $true
+            Write-Host "Compilando instalador da estação..."
             & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.value }}" installer\FarmaFlowAgent.iss
             if ($LASTEXITCODE -ne 0) { throw "Compilação do instalador da estação falhou." }
+            Write-Host "Instalador da estação compilado."
             Sign-Installer (Resolve-Path artifacts\FarmaFlow-Estacao-Setup.exe)
             Copy-Item artifacts\FarmaFlow-Estacao-Setup.exe publish-server\FarmaFlow-Estacao-Setup.exe -Force
 
+            Write-Host "Compilando instalador de migração..."
             & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.value }}" installer\FarmaFlowMigration.iss
             if ($LASTEXITCODE -ne 0) { throw "Compilação do instalador de migração falhou." }
+            Write-Host "Instalador de migração compilado."
+            Write-Host "Compilando instalador do servidor..."
             & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.value }}" installer\FarmaFlowServer.iss
             if ($LASTEXITCODE -ne 0) { throw "Compilação do instalador do servidor falhou." }
+            Write-Host "Instalador do servidor compilado."
             Sign-Installer (Resolve-Path artifacts\FarmaFlow-Migracao-Setup.exe)
             Sign-Installer (Resolve-Path artifacts\FarmaFlow-Server-Setup.exe)
             Pop-Location
