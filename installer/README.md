@@ -32,3 +32,6 @@ Cada bundle contém:
 - `FarmaFlow-Migration.zip`;
 - `release-manifest.json`, com commits, runtimes, tamanhos e hashes;
 - `SHA256SUMS.txt`.
+
+Consulte [o guia completo de instalação](../docs/GUIA-INSTALACAO-COMPLETA.md)
+antes do ensaio ou do corte de produção.

@@ -53,3 +53,7 @@ tag ou commit para cada fonte. Uma tag como `v1.0.0` publica automaticamente:
 Os instaladores são autocontidos. O manifesto registra os commits exatos e as
 versões dos runtimes usados. Veja [installer/README.md](installer/README.md)
 para configuração de acesso entre repositórios e assinatura Authenticode.
+
+O procedimento completo de build, ensaio, migração do Supabase, instalação,
+pareamento, go-live, backup e rollback está em
+[docs/GUIA-INSTALACAO-COMPLETA.md](docs/GUIA-INSTALACAO-COMPLETA.md).

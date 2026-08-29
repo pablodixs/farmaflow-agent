@@ -11,7 +11,7 @@ byte[] magic = "FFMIGR1"u8.ToArray();
 if (args.Length == 0 || args.Contains("--help", StringComparer.OrdinalIgnoreCase))
 {
     Console.WriteLine("""
-        FarmaFlow.Migration export-full --host HOST --port 5432 --database postgres --username USER --pg-bin DIR --output arquivo.ffbackup [--store-id UUID]
+        FarmaFlow.Migration export-full --host HOST --port 5432 --database postgres --username USER --pg-bin DIR --output arquivo.ffbackup [--store-id UUID] [--ssl-mode Require|Prefer|Disable]
         FarmaFlow.Migration verify --input arquivo.ffbackup
         FarmaFlow.Migration restore --input arquivo.ffbackup --host 127.0.0.1 --port 54329 --database farmaflow --username farmaflow --pg-bin DIR
         FarmaFlow.Migration restore-server-backup --input backup.ffbackup --host 127.0.0.1 --port 54329 --database farmaflow --username farmaflow --pg-bin DIR
@@ -58,6 +58,7 @@ async Task ExportFullAsync(IReadOnlyDictionary<string, string> values)
     string pgBin = Required(values, "pg-bin");
     string output = Path.GetFullPath(Required(values, "output"));
     Guid? packageStoreId = values.TryGetValue("store-id", out string? storeValue) ? Guid.Parse(storeValue) : null;
+    SslMode sslMode = ResolveSslMode(values, host);
     string sourcePassword = ReadSecret("Senha do PostgreSQL de origem: ");
     string packagePassword = ReadSecret("Senha do pacote criptografado: ");
     string confirmation = ReadSecret("Confirme a senha do pacote: ");
@@ -73,7 +74,7 @@ async Task ExportFullAsync(IReadOnlyDictionary<string, string> values)
         Database = database,
         Username = username,
         Password = sourcePassword,
-        SslMode = SslMode.Require,
+        SslMode = sslMode,
         Timeout = 30,
         CommandTimeout = 0
     };
@@ -551,6 +552,17 @@ static string Required(IReadOnlyDictionary<string, string> values, string name) 
     values.TryGetValue(name, out string? value) && !string.IsNullOrWhiteSpace(value)
         ? value
         : throw new InvalidOperationException($"Informe --{name}.");
+
+static SslMode ResolveSslMode(IReadOnlyDictionary<string, string> values, string host)
+{
+    bool loopback = host.Equals("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+        || host.Equals("::1", StringComparison.OrdinalIgnoreCase);
+    string configured = values.GetValueOrDefault("ssl-mode", loopback ? "Prefer" : "Require");
+    return Enum.TryParse(configured, ignoreCase: true, out SslMode mode)
+        ? mode
+        : throw new InvalidOperationException($"ssl-mode inválido: {configured}.");
+}
 
 static string ReadSecret(string prompt)
 {

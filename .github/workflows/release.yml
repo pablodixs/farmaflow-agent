@@ -246,6 +246,12 @@ jobs:
       - name: Create release manifest and checksums
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force -Path agent\publish-migration\docs | Out-Null
+          Copy-Item agent\docs\GUIA-INSTALACAO-COMPLETA.md agent\publish-migration\docs\GUIA-INSTALACAO-COMPLETA.md
+          Copy-Item agent\scripts\Test-LocalDeployment.ps1 agent\publish-migration\Test-LocalDeployment.ps1
+          Copy-Item backend\ops\local\CUTOVER.md agent\publish-migration\docs\CUTOVER.md
+          Copy-Item backend\ops\supabase\harden_data_api.sql agent\publish-migration\harden_data_api.sql
+          Copy-Item backend\ops\supabase\verify_data_api_security.sql agent\publish-migration\verify_data_api_security.sql
           Compress-Archive agent\publish-migration\* agent\artifacts\FarmaFlow-Migration.zip -Force
           $releaseFiles = @(
             "agent\artifacts\FarmaFlow-Server-Setup.exe",
