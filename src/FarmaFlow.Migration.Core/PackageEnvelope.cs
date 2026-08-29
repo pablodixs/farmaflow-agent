@@ -51,16 +51,18 @@ public static class PackageEnvelope
             aes.Encrypt(nonce, plaintext.Span, ciphertext, tag, aad);
 
             Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(outputPath))!);
-            await using var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None);
-            await stream.WriteAsync(Magic, cancellationToken);
-            await WriteInt32Async(stream, Version, cancellationToken);
-            await WriteInt32Async(stream, manifestBytes.Length, cancellationToken);
-            await stream.WriteAsync(salt, cancellationToken);
-            await stream.WriteAsync(nonce, cancellationToken);
-            await stream.WriteAsync(tag, cancellationToken);
-            await stream.WriteAsync(manifestBytes, cancellationToken);
-            await stream.WriteAsync(ciphertext, cancellationToken);
-            await stream.FlushAsync(cancellationToken);
+            await using (var stream = new FileStream(outputPath, FileMode.Create, FileAccess.Write, FileShare.None))
+            {
+                await stream.WriteAsync(Magic, cancellationToken);
+                await WriteInt32Async(stream, Version, cancellationToken);
+                await WriteInt32Async(stream, manifestBytes.Length, cancellationToken);
+                await stream.WriteAsync(salt, cancellationToken);
+                await stream.WriteAsync(nonce, cancellationToken);
+                await stream.WriteAsync(tag, cancellationToken);
+                await stream.WriteAsync(manifestBytes, cancellationToken);
+                await stream.WriteAsync(ciphertext, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
             return await Sha256FileAsync(outputPath, cancellationToken);
         }
         finally
