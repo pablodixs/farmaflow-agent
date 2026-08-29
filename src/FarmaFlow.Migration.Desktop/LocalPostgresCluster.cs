@@ -43,12 +43,16 @@ internal sealed class LocalPostgresCluster : IAsyncDisposable
             if (init.ExitCode != 0) throw new InvalidOperationException($"Não foi possível preparar o PostgreSQL temporário: {init.Error}");
             await File.AppendAllTextAsync(Path.Combine(root, "postgresql.conf"), $"\nlisten_addresses = '127.0.0.1'\nport = {port}\npassword_encryption = 'scram-sha-256'\n", cancellationToken);
             await File.WriteAllTextAsync(Path.Combine(root, "pg_hba.conf"), "local all all scram-sha-256\nhost all all 127.0.0.1/32 scram-sha-256\n", Encoding.UTF8, cancellationToken);
+            string serverLog = Path.Combine(root, "postgres.log");
             ProcessResult start = await ProcessRunner.RunAsync(
                 Path.Combine(postgresBin, "pg_ctl.exe"),
-                ["start", "--pgdata", root, "--wait", "--timeout", "60"],
-                environment: new Dictionary<string, string> { ["PGPORT"] = port.ToString() },
+                ["start", "--pgdata", root, "--wait", "--timeout", "60", "--log", serverLog, "--options", $"-p {port}"],
                 cancellationToken: cancellationToken);
-            if (start.ExitCode != 0) throw new InvalidOperationException($"Não foi possível iniciar o PostgreSQL temporário: {start.Error}");
+            if (start.ExitCode != 0)
+            {
+                string details = File.Exists(serverLog) ? await File.ReadAllTextAsync(serverLog, cancellationToken) : start.Error;
+                throw new InvalidOperationException($"Não foi possível iniciar o PostgreSQL temporário: {details}");
+            }
             started = true;
             return new LocalPostgresCluster(root, postgresBin, password, port);
         }
