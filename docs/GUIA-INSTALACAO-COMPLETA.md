@@ -123,6 +123,7 @@ O bundle deve conter:
 
 - `FarmaFlow-Server-Setup.exe`;
 - `FarmaFlow-Estacao-Setup.exe`;
+- `FarmaFlow-Migracao-Setup.exe`;
 - `FarmaFlow-Migration.zip`;
 - `release-manifest.json`;
 - `SHA256SUMS.txt`.
@@ -191,11 +192,15 @@ order by installed_rank desc
 limit 10;
 ```
 
-Guarde os UUIDs das lojas no registro do corte.
+No fluxo guiado, o assistente lista as lojas e grava os identificadores no
+relatório sem credenciais. Só use UUIDs manualmente no procedimento de
+contingência abaixo.
 
 ### 7.2 Criar o primeiro arquivo integral
 
-Extraia `FarmaFlow-Migration.zip` em `C:\FarmaFlow\Migration`. Crie uma pasta protegida para os pacotes, por exemplo `D:\FarmaFlow-Corte`.
+Para o fluxo guiado, execute `FarmaFlow-Migracao-Setup.exe` como suporte. O
+`FarmaFlow-Migration.zip` continua disponível como contingência técnica. Crie
+uma pasta protegida para os pacotes, por exemplo `D:\FarmaFlow-Corte`.
 
 Exemplo usando a conexão direta:
 

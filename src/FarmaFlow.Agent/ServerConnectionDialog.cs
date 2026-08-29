@@ -11,7 +11,7 @@ public sealed class ServerConnectionDialog : Form
 
     public ServerConnectionDialog(DesktopConnection current)
     {
-        Text = "Configurar servidor FarmaFlow";
+        Text = "Configuração avançada — servidor FarmaFlow";
         StartPosition = FormStartPosition.CenterScreen;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MinimizeBox = false;

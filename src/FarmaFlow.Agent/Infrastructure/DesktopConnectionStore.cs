@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Net.Security;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using FarmaFlow.Migration.Core;
 
 namespace FarmaFlow.Agent.Infrastructure;
 
@@ -44,6 +45,13 @@ public sealed class DesktopConnectionStore
             throw new InvalidOperationException("A impressão digital deve conter 64 caracteres SHA-256.");
 
         File.WriteAllText(_path, JsonSerializer.Serialize(new DesktopConnection(url, fingerprint), JsonOptions));
+    }
+
+    public StationBootstrapInfo ImportStationPackage(string path)
+    {
+        StationBootstrapInfo info = StationBootstrapPackage.ReadAndValidate(path);
+        Save(new DesktopConnection(info.ServerUrl, info.CertificateSha256));
+        return info;
     }
 
     public bool IsAllowedOrigin(string origin)

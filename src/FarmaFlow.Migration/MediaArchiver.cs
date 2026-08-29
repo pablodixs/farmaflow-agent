@@ -138,6 +138,8 @@ internal static class MediaArchiver
     private static string ReadSecret(string prompt)
     {
         Console.Write(prompt);
+        if (Console.IsInputRedirected)
+            return Console.ReadLine() ?? string.Empty;
         var result = new StringBuilder();
         while (true)
         {

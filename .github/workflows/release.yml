@@ -167,6 +167,13 @@ jobs:
             -p:Version=${{ steps.version.outputs.value }} `
             -o agent\publish-migration
           if ($LASTEXITCODE -ne 0) { throw "Publicação da ferramenta de migração falhou." }
+          dotnet publish agent\src\FarmaFlow.Migration.Desktop\FarmaFlow.Migration.Desktop.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:Version=${{ steps.version.outputs.value }} `
+            -o agent\publish-migration-desktop
+          if ($LASTEXITCODE -ne 0) { throw "Publicação do assistente de migração falhou." }
+          Copy-Item agent\publish-migration-desktop\* agent\publish-migration -Recurse -Force
+          Copy-Item runtime-input\postgres agent\publish-migration\postgres -Recurse -Force
 
       - name: Stage server distribution
         shell: pwsh
@@ -185,6 +192,11 @@ jobs:
             -PostgresRuntime (Resolve-Path runtime-input\postgres) `
             -Version "${{ steps.version.outputs.value }}" `
             -OutputDirectory agent\publish-server
+          dotnet publish agent\src\FarmaFlow.Server.Setup\FarmaFlow.Server.Setup.csproj `
+            -c Release -r win-x64 --self-contained true `
+            -p:Version=${{ steps.version.outputs.value }} `
+            -o agent\publish-server
+          if ($LASTEXITCODE -ne 0) { throw "Publicação do assistente do servidor falhou." }
 
       - name: Bundle and verify WebView2 bootstrapper
         shell: pwsh
@@ -210,6 +222,9 @@ jobs:
           Push-Location agent
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.value }}" installer\FarmaFlowAgent.iss
           if ($LASTEXITCODE -ne 0) { throw "Compilação do instalador da estação falhou." }
+          Copy-Item artifacts\FarmaFlow-Estacao-Setup.exe publish-server\FarmaFlow-Estacao-Setup.exe -Force
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.value }}" installer\FarmaFlowMigration.iss
+          if ($LASTEXITCODE -ne 0) { throw "Compilação do instalador de migração falhou." }
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" "/DMyAppVersion=${{ steps.version.outputs.value }}" installer\FarmaFlowServer.iss
           if ($LASTEXITCODE -ne 0) { throw "Compilação do instalador do servidor falhou." }
           Pop-Location
@@ -248,6 +263,7 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force -Path agent\publish-migration\docs | Out-Null
           Copy-Item agent\docs\GUIA-INSTALACAO-COMPLETA.md agent\publish-migration\docs\GUIA-INSTALACAO-COMPLETA.md
+          Copy-Item agent\docs\GUIA-RAPIDO-LOCAL.md agent\publish-migration\docs\GUIA-RAPIDO-LOCAL.md
           Copy-Item agent\scripts\Test-LocalDeployment.ps1 agent\publish-migration\Test-LocalDeployment.ps1
           Copy-Item backend\ops\local\CUTOVER.md agent\publish-migration\docs\CUTOVER.md
           Copy-Item backend\ops\supabase\harden_data_api.sql agent\publish-migration\harden_data_api.sql
@@ -256,6 +272,7 @@ jobs:
           $releaseFiles = @(
             "agent\artifacts\FarmaFlow-Server-Setup.exe",
             "agent\artifacts\FarmaFlow-Estacao-Setup.exe",
+            "agent\artifacts\FarmaFlow-Migracao-Setup.exe",
             "agent\artifacts\FarmaFlow-Migration.zip"
           )
           foreach ($file in $releaseFiles) {
@@ -305,6 +322,7 @@ jobs:
           subject-path: |
             agent/artifacts/FarmaFlow-Server-Setup.exe
             agent/artifacts/FarmaFlow-Estacao-Setup.exe
+            agent/artifacts/FarmaFlow-Migracao-Setup.exe
             agent/artifacts/FarmaFlow-Migration.zip
             agent/artifacts/release-manifest.json
 
@@ -325,6 +343,7 @@ jobs:
           files: |
             agent/artifacts/FarmaFlow-Server-Setup.exe
             agent/artifacts/FarmaFlow-Estacao-Setup.exe
+            agent/artifacts/FarmaFlow-Migracao-Setup.exe
             agent/artifacts/FarmaFlow-Migration.zip
             agent/artifacts/release-manifest.json
             agent/artifacts/SHA256SUMS.txt

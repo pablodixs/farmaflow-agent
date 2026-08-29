@@ -4,7 +4,8 @@ Os instaladores são deliberadamente separados:
 
 - `FarmaFlow-Server-Setup.exe`: requer o diretório `publish-server` criado por `scripts/Stage-ServerPackage.ps1` e instala PostgreSQL 17, Java 21, Node 22, backend, frontend e o Host Windows.
 - `FarmaFlow-Estacao-Setup.exe`: requer o diretório `publish` criado por `dotnet publish` e instala a estação WebView2/ impressão.
-- `FarmaFlow.Migration.exe`: ferramenta administrativa separada; nunca é incluída nos instaladores operacionais.
+- `FarmaFlow-Migracao-Setup.exe`: instala o assistente gráfico de preparação do ensaio/corte e inclui o CLI de contingência e PostgreSQL 17 portátil.
+- `FarmaFlow.Migration.exe`: CLI de contingência incluído no instalador de migração; não é instalado no servidor ou na estação.
 
 O staging recusa runtimes incompletos. O workflow `.github/workflows/release.yml` prepara Java 21 com `jlink`, inclui Node 22 e usa o ZIP oficial do PostgreSQL 17.11 com SHA-256 fixado. O mesmo job compila backend, frontend e componentes Windows, evitando publicar instaladores formados por execuções diferentes.
 
@@ -29,9 +30,12 @@ Cada bundle contém:
 
 - `FarmaFlow-Server-Setup.exe`;
 - `FarmaFlow-Estacao-Setup.exe`;
+- `FarmaFlow-Migracao-Setup.exe`;
 - `FarmaFlow-Migration.zip`;
 - `release-manifest.json`, com commits, runtimes, tamanhos e hashes;
 - `SHA256SUMS.txt`.
 
 Consulte [o guia completo de instalação](../docs/GUIA-INSTALACAO-COMPLETA.md)
 antes do ensaio ou do corte de produção.
+
+Para o fluxo normal, use o [guia rápido](../docs/GUIA-RAPIDO-LOCAL.md).

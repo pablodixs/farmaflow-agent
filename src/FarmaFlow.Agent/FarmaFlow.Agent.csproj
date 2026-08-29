@@ -15,6 +15,7 @@
     <ApplicationIcon>..\main\resources\ico.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\FarmaFlow.Migration.Core\FarmaFlow.Migration.Core.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
     <PackageReference Include="PdfiumPrinter" Version="1.4.1" />

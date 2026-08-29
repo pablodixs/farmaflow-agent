@@ -1,9 +1,11 @@
 using Npgsql;
+using FarmaFlow.Migration.Core;
 using System.Data;
 using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 const int formatVersion = 1;
 byte[] magic = "FFMIGR1"u8.ToArray();
@@ -13,6 +15,7 @@ if (args.Length == 0 || args.Contains("--help", StringComparer.OrdinalIgnoreCase
     Console.WriteLine("""
         FarmaFlow.Migration export-full --host HOST --port 5432 --database postgres --username USER --pg-bin DIR --output arquivo.ffbackup [--store-id UUID] [--ssl-mode Require|Prefer|Disable]
         FarmaFlow.Migration verify --input arquivo.ffbackup
+        FarmaFlow.Migration convert-v2 --input arquivo.ffbackup --output pacote.ffstore
         FarmaFlow.Migration restore --input arquivo.ffbackup --host 127.0.0.1 --port 54329 --database farmaflow --username farmaflow --pg-bin DIR
         FarmaFlow.Migration restore-server-backup --input backup.ffbackup --host 127.0.0.1 --port 54329 --database farmaflow --username farmaflow --pg-bin DIR
         FarmaFlow.Migration filter-store-staging --host 127.0.0.1 --port 54329 --database farmaflow_staging --username farmaflow --store-id UUID
@@ -32,6 +35,9 @@ switch (args[0].ToLowerInvariant())
         break;
     case "verify":
         await VerifyAsync(Required(arguments, "input"));
+        break;
+    case "convert-v2":
+        await ConvertV2Async(arguments);
         break;
     case "restore":
         await RestoreAsync(arguments);
@@ -164,36 +170,42 @@ async Task ExportFullAsync(IReadOnlyDictionary<string, string> values)
 async Task VerifyAsync(string input)
 {
     input = Path.GetFullPath(input);
-    byte[] payload = await File.ReadAllBytesAsync(input);
-    if (payload.Length < magic.Length + 48 || !payload.AsSpan(0, magic.Length).SequenceEqual(magic))
-        throw new InvalidDataException("O arquivo não é um pacote FarmaFlow válido.");
-    int version = BitConverter.ToInt32(payload, magic.Length);
-    if (version != formatVersion) throw new InvalidDataException($"Versão de pacote não suportada: {version}");
-
     string password = ReadSecret("Senha do pacote: ");
-    int offset = magic.Length + sizeof(int);
-    byte[] salt = payload.AsSpan(offset, 16).ToArray();
-    byte[] nonce = payload.AsSpan(offset + 16, 12).ToArray();
-    byte[] tag = payload.AsSpan(offset + 28, 16).ToArray();
-    byte[] ciphertext = payload.AsSpan(offset + 44).ToArray();
-    byte[] plaintext = new byte[ciphertext.Length];
-    byte[] key = Rfc2898DeriveBytes.Pbkdf2(password, salt, 600_000, HashAlgorithmName.SHA256, 32);
     try
     {
-        using var aes = new AesGcm(key, tag.Length);
-        aes.Decrypt(nonce, ciphertext, tag, plaintext, magic);
-        Console.WriteLine($"Pacote íntegro. Dump descriptografado: {plaintext.Length:N0} bytes; SHA-256 {Convert.ToHexString(SHA256.HashData(plaintext))}");
-    }
-    catch (CryptographicException)
-    {
-        throw new InvalidDataException("Senha incorreta ou pacote adulterado.");
+        PackageEnvelope.PackageReadResult package = await PackageEnvelope.ReadAsync(input, password);
+        string kind = "LEGADO";
+        if (package.Manifest is not null && package.Manifest.RootElement.TryGetProperty("kind", out JsonElement value))
+            kind = value.GetString() ?? "PACOTE";
+        Console.WriteLine($"Pacote íntegro ({kind}). Dump descriptografado: {package.Plaintext.Length:N0} bytes; SHA-256 {package.PlaintextSha256}");
+        CryptographicOperations.ZeroMemory(package.Plaintext);
     }
     finally
     {
-        CryptographicOperations.ZeroMemory(key);
-        CryptographicOperations.ZeroMemory(plaintext);
         password = string.Empty;
     }
+}
+
+async Task ConvertV2Async(IReadOnlyDictionary<string, string> values)
+{
+    string input = Path.GetFullPath(Required(values, "input"));
+    string output = Path.GetFullPath(Required(values, "output"));
+    string password = ReadSecret("Senha do pacote: ");
+    try
+    {
+        string manifestPath = $"{input}.json";
+        if (!File.Exists(manifestPath)) throw new InvalidDataException("O pacote legado não contém manifesto.");
+        using JsonDocument manifest = JsonDocument.Parse(await File.ReadAllTextAsync(manifestPath));
+        PackageEnvelope.PackageReadResult package = await PackageEnvelope.ReadAsync(input, password);
+        JsonObject normalized = JsonNode.Parse(manifest.RootElement.GetRawText())!.AsObject();
+        normalized.Remove("packageSha256");
+        normalized["formatVersion"] = 2;
+        using JsonDocument normalizedManifest = JsonDocument.Parse(normalized.ToJsonString());
+        await PackageEnvelope.WriteV2Async(output, package.Plaintext, normalizedManifest.RootElement, password);
+        CryptographicOperations.ZeroMemory(package.Plaintext);
+        Console.WriteLine($"Pacote v2 criado: {output}");
+    }
+    finally { password = string.Empty; }
 }
 
 async Task RestoreAsync(IReadOnlyDictionary<string, string> values)
@@ -207,9 +219,10 @@ async Task RestoreAsync(IReadOnlyDictionary<string, string> values)
     string packagePassword = ReadSecret("Senha do pacote: ");
     string targetPassword = ReadSecret("Senha do PostgreSQL local: ");
     string temporary = Path.Combine(Path.GetTempPath(), $"farmaflow-restore-{Guid.NewGuid():N}.dump");
+    PackageEnvelope.PackageReadResult? packageEnvelope = null;
+    JsonDocument? expectedManifest = null;
     try
     {
-        JsonDocument? expectedManifest = null;
         string manifestPath = $"{input}.json";
         if (File.Exists(manifestPath))
         {
@@ -219,10 +232,21 @@ async Task RestoreAsync(IReadOnlyDictionary<string, string> values)
                 throw new InvalidDataException("O checksum do pacote não corresponde ao manifesto.");
         }
 
-        byte[] plaintext = await DecryptAsync(input, packagePassword);
+        packageEnvelope = await PackageEnvelope.ReadAsync(input, packagePassword);
+        // v2 embeds the authenticated manifest, so a .ffstore can be moved
+        // without a sidecar file and still receive full reconciliation.
+        expectedManifest ??= packageEnvelope.Manifest;
+        byte[] plaintext = packageEnvelope.Plaintext;
         await File.WriteAllBytesAsync(temporary, plaintext);
         CryptographicOperations.ZeroMemory(plaintext);
-        await RunPgRestoreListAsync(pgBin, temporary);
+        string catalog = await RunPgRestoreListAsync(pgBin, temporary);
+        if (expectedManifest is not null && expectedManifest.RootElement.TryGetProperty("pgRestoreCatalogSha256", out JsonElement catalogHash))
+        {
+            string expectedCatalogHash = catalogHash.GetString() ?? string.Empty;
+            string actualCatalogHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(catalog)));
+            if (!string.Equals(expectedCatalogHash, actualCatalogHash, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("O catálogo pg_restore não corresponde ao manifesto.");
+        }
         await RunPgRestoreAsync(pgBin, host, port, database, username, targetPassword, temporary);
 
         var connectionBuilder = new NpgsqlConnectionStringBuilder
@@ -265,12 +289,22 @@ async Task RestoreAsync(IReadOnlyDictionary<string, string> values)
     {
         packagePassword = string.Empty;
         targetPassword = string.Empty;
+        packageEnvelope?.Manifest?.Dispose();
+        if (expectedManifest is not null && !ReferenceEquals(expectedManifest, packageEnvelope?.Manifest)) expectedManifest.Dispose();
+        if (packageEnvelope is not null) CryptographicOperations.ZeroMemory(packageEnvelope.Plaintext);
         if (File.Exists(temporary)) File.Delete(temporary);
     }
 }
 
 async Task<byte[]> DecryptAsync(string input, string password)
 {
+    byte[] header = await File.ReadAllBytesAsync(input);
+    if (header.AsSpan().StartsWith("FFMIG2"u8))
+    {
+        CryptographicOperations.ZeroMemory(header);
+        return (await PackageEnvelope.ReadAsync(input, password)).Plaintext;
+    }
+    CryptographicOperations.ZeroMemory(header);
     byte[] payload = await File.ReadAllBytesAsync(input);
     if (payload.Length < magic.Length + 48 || !payload.AsSpan(0, magic.Length).SequenceEqual(magic))
         throw new InvalidDataException("O arquivo não é um pacote FarmaFlow válido.");
@@ -567,6 +601,8 @@ static SslMode ResolveSslMode(IReadOnlyDictionary<string, string> values, string
 static string ReadSecret(string prompt)
 {
     Console.Write(prompt);
+    if (Console.IsInputRedirected)
+        return Console.ReadLine() ?? string.Empty;
     var result = new StringBuilder();
     while (true)
     {

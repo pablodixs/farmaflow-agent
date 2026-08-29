@@ -4,6 +4,11 @@ using Microsoft.AspNetCore.Server.Kestrel.Core;
 var builder = WebApplication.CreateBuilder(args);
 builder.Host.UseWindowsService(options => options.ServiceName = "FarmaFlow Server");
 
+string localConfig = Path.Combine(
+    Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+    "FarmaFlow", "Server", "appsettings.local.json");
+builder.Configuration.AddJsonFile(localConfig, optional: true, reloadOnChange: false);
+
 var options = builder.Configuration.GetSection("ServerHost").Get<ServerHostOptions>() ?? new ServerHostOptions();
 Directory.CreateDirectory(options.DataDirectory);
 var certificate = LocalCertificateProvider.LoadOrCreate();
@@ -13,13 +18,19 @@ builder.Services.AddSingleton(options);
 builder.Services.AddSingleton(secrets);
 builder.Services.AddSingleton<ProcessSupervisorService>();
 builder.Services.AddHostedService(services => services.GetRequiredService<ProcessSupervisorService>());
-builder.Services.AddHostedService<BackupService>();
+builder.Services.AddSingleton<BackupService>();
+builder.Services.AddHostedService(services => services.GetRequiredService<BackupService>());
 builder.Services.AddHttpClient("reverse-proxy", client => client.Timeout = Timeout.InfiniteTimeSpan);
 builder.WebHost.ConfigureKestrel(server => server.ListenAnyIP(
     options.PublicPort,
     listen => listen.UseHttps(certificate)));
 
 var app = builder.Build();
+if (args.Contains("--backup-once", StringComparer.OrdinalIgnoreCase))
+{
+    await app.Services.GetRequiredService<BackupService>().CreateBackupAsync(CancellationToken.None);
+    return;
+}
 app.MapGet("/.well-known/farmaflow/server", () => Results.Ok(new
 {
     serverId = Environment.MachineName,

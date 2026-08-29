@@ -29,6 +29,45 @@ Name: "{autodesktop}\FarmaFlow"; Filename: "{app}\FarmaFlowAgent.exe"; Tasks: de
 
 [Registry]
 Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "FarmaFlowAgent"; ValueData: "\"{app}\FarmaFlowAgent.exe\""; Flags: uninsdeletevalue
+Root: HKCU; Subkey: "Software\Classes\.ffstation"; ValueType: string; ValueData: "FarmaFlowStationFile"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\FarmaFlowStationFile"; ValueType: string; ValueData: "FarmaFlow station configuration"; Flags: uninsdeletekey
+Root: HKCU; Subkey: "Software\Classes\FarmaFlowStationFile\DefaultIcon"; ValueType: string; ValueData: "{app}\FarmaFlowAgent.exe,0"
+Root: HKCU; Subkey: "Software\Classes\FarmaFlowStationFile\shell\open\command"; ValueType: string; ValueData: "\"{app}\FarmaFlowAgent.exe\" \"%1\""
+
+[Code]
+procedure CurStepChanged(CurStep: TSetupStep);
+var
+  FindRec: TFindRec;
+  SourceDirectory, SourcePath, DestinationPath: string;
+  Count: Integer;
+begin
+  if CurStep <> ssPostInstall then
+    exit;
+  SourceDirectory := AddBackslash(ExtractFilePath(ExpandConstant('{srcexe}')));
+  Count := 0;
+  if FindFirst(SourceDirectory + '*.ffstation', FindRec) then
+  begin
+    try
+      repeat
+        Count := Count + 1;
+      until not FindNext(FindRec);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+  if Count <> 1 then
+    exit;
+  if FindFirst(SourceDirectory + '*.ffstation', FindRec) then
+  begin
+    try
+      SourcePath := SourceDirectory + FindRec.Name;
+      DestinationPath := AddBackslash(ExpandConstant('{app}')) + FindRec.Name;
+      FileCopy(SourcePath, DestinationPath, False);
+    finally
+      FindClose(FindRec);
+    end;
+  end;
+end;
 
 [Tasks]
 Name: "desktopicon"; Description: "Criar atalho na área de trabalho"; Flags: unchecked

@@ -14,7 +14,7 @@ public sealed class TrayApplicationContext : ApplicationContext
         _window = new DesktopWindow(connections);
         var menu = new ContextMenuStrip();
         menu.Items.Add("Abrir FarmaFlow", null, async (_, _) => await _window.NavigateAsync());
-        menu.Items.Add("Configurar servidor", null, (_, _) => _window.Configure());
+        menu.Items.Add("Configuração avançada", null, (_, _) => _window.Configure());
         menu.Items.Add("Parear estação", null, async (_, _) => await Pair(pairing));
         menu.Items.Add("Status", null, (_, _) => MessageBox.Show(
             store.GetRegistration() is null ? "Agente não pareado." : $"Agente conectado.\nPendências: {store.PendingCount()}",
@@ -56,7 +56,7 @@ public sealed class TrayApplicationContext : ApplicationContext
     {
         var code = Microsoft.VisualBasic.Interaction.InputBox("Informe o código exibido no FarmaFlow:", "Parear estação");
         if (string.IsNullOrWhiteSpace(code)) return;
-        try { await pairing.PairAsync(code); MessageBox.Show("Estação pareada com sucesso.", "FarmaFlow Agent"); }
+        try { await pairing.PairAsync(code); MessageBox.Show("Estação conectada com sucesso.", "FarmaFlow Agent"); }
         catch (Exception exception) { MessageBox.Show(exception.Message, "Falha no pareamento", MessageBoxButtons.OK, MessageBoxIcon.Error); }
     }
 }
