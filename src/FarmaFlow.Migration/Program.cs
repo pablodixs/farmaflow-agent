@@ -96,7 +96,7 @@ async Task ExportFullAsync(IReadOnlyDictionary<string, string> values)
             ?? throw new InvalidOperationException("Não foi possível exportar o snapshot PostgreSQL."));
 
         string schemaVersion = await ScalarAsync(connection, transaction,
-            "SELECT COALESCE(MAX(version), '0') FROM public.flyway_schema_history WHERE success") ?? "0";
+            "SELECT COALESCE((SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1), '0')") ?? "0";
         Guid? packageOrganizationId = null;
         if (packageStoreId is not null)
         {
@@ -266,7 +266,7 @@ async Task RestoreAsync(IReadOnlyDictionary<string, string> values)
         await using (var revoke = new NpgsqlCommand("UPDATE public.auth_sessions SET revoked_at = now() WHERE revoked_at IS NULL", connection, transaction))
             Console.WriteLine($"Sessões invalidadas: {await revoke.ExecuteNonQueryAsync()}");
         string version = await ScalarAsync(connection, transaction,
-            "SELECT COALESCE(MAX(version), '0') FROM public.flyway_schema_history WHERE success") ?? "0";
+            "SELECT COALESCE((SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1), '0')") ?? "0";
         if (!int.TryParse(version, out int numericVersion) || numericVersion < 52)
             throw new InvalidOperationException($"Schema restaurado na versão {version}; era esperada ao menos a V52.");
         var actualCounts = await ReadCountsAsync(connection, transaction);
@@ -348,7 +348,7 @@ async Task RestoreServerBackupAsync(IReadOnlyDictionary<string, string> values)
         await using var connection = new NpgsqlConnection(connectionBuilder.ConnectionString);
         await connection.OpenAsync();
         string schemaVersion = await ScalarAsync(connection, null,
-            "SELECT COALESCE(MAX(version), '0') FROM public.flyway_schema_history WHERE success") ?? "0";
+            "SELECT COALESCE((SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1), '0')") ?? "0";
         if (!int.TryParse(schemaVersion, out int numericVersion) || numericVersion < 52)
             throw new InvalidOperationException($"Backup restaurado no schema V{schemaVersion}; era esperada ao menos a V52.");
         Console.WriteLine($"Backup diário restaurado e validado no schema V{schemaVersion}.");

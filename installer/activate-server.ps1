@@ -12,7 +12,7 @@ $secrets = Get-Content (Join-Path $serviceRoot "secrets.json") -Raw | ConvertFro
 $postgresBin = Join-Path $InstallDirectory "runtime\postgres\bin"
 $env:PGPASSWORD = $secrets.DatabasePassword
 try {
-    $schemaVersion = & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COALESCE((SELECT MAX(version) FROM public.flyway_schema_history WHERE success), '0')"
+    $schemaVersion = & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COALESCE((SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1), '0')"
     if ([int]$schemaVersion -lt 52) { throw "Schema V$schemaVersion inválido; era esperada ao menos a V52." }
     $storeCount = & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COUNT(*) FROM public.stores"
     if ([int]$storeCount -ne 1) { throw "LOCAL_SINGLE_STORE exige exatamente uma loja; foram encontradas $storeCount." }

@@ -51,7 +51,7 @@ internal sealed class MigrationPipeline
         };
         await using var connection = new NpgsqlConnection(builder.ConnectionString);
         await connection.OpenAsync(cancellationToken);
-        await using (var schema = new NpgsqlCommand("SELECT COALESCE(MAX(version), '0') FROM public.flyway_schema_history WHERE success", connection))
+        await using (var schema = new NpgsqlCommand("SELECT COALESCE((SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1), '0')", connection))
         {
             string version = Convert.ToString(await schema.ExecuteScalarAsync(cancellationToken)) ?? "0";
             if (!int.TryParse(version, out int number) || number < 52)

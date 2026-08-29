@@ -99,7 +99,7 @@ try {
     $storesTableExists = & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT to_regclass('public.stores') IS NOT NULL"
     if ($LASTEXITCODE -ne 0) { throw "Não foi possível verificar as lojas locais." }
     $schemaVersion = if ($schemaTableExists.Trim() -eq "t") {
-        & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COALESCE(MAX(version), '0') FROM public.flyway_schema_history WHERE success"
+        & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COALESCE((SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1), '0')"
     } else { "0" }
     $storeCount = if ($storesTableExists.Trim() -eq "t") {
         & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COUNT(*) FROM public.stores"
