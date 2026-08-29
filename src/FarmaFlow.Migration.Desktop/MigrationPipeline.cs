@@ -100,6 +100,16 @@ internal sealed class MigrationPipeline
                 SELECT roles.role_name,p.proname
                 FROM roles CROSS JOIN pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
                 WHERE n.nspname='public' AND has_function_privilege(roles.role_name,p.oid,'EXECUTE')
+                  -- pg_trgm functions are PostgreSQL extension internals, not
+                  -- application RPC endpoints exposed by the FarmaFlow API.
+                  AND NOT EXISTS (
+                      SELECT 1
+                      FROM pg_depend d
+                      WHERE d.classid='pg_proc'::regclass
+                        AND d.objid=p.oid
+                        AND d.refclassid='pg_extension'::regclass
+                        AND d.deptype='e'
+                  )
             )
             SELECT COUNT(*) FROM remaining
             """;
