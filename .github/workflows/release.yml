@@ -245,6 +245,18 @@ jobs:
         run: |
           $certificatePath = Join-Path $env:RUNNER_TEMP "farmaflow-signing.pfx"
           [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_SIGNING_CERT_BASE64))
+          $signingCertificate = [System.Security.Cryptography.X509Certificates.X509Certificate2]::new(
+            $certificatePath,
+            $env:WINDOWS_SIGNING_CERT_PASSWORD,
+            [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
+          $trustedRootStore = $null
+          if ($signingCertificate.Subject -eq $signingCertificate.Issuer) {
+            $trustedRootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
+              [System.Security.Cryptography.X509Certificates.StoreName]::Root,
+              [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
+            $trustedRootStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
+            $trustedRootStore.Add($signingCertificate)
+          }
           $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
             Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
             Sort-Object FullName -Descending |
@@ -256,7 +268,9 @@ jobs:
               /f $certificatePath /p $env:WINDOWS_SIGNING_CERT_PASSWORD $path
             if ($LASTEXITCODE -ne 0) { throw "Assinatura falhou: $path" }
             $signature = Get-AuthenticodeSignature $path
-            if ($signature.Status -ne "Valid") { throw "Assinatura Authenticode inválida em $path`: $($signature.Status)" }
+            if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Thumbprint -ne $signingCertificate.Thumbprint) {
+              throw "Assinatura Authenticode inválida em $path`: $($signature.Status)"
+            }
           }
 
           $pushed = $false
@@ -279,6 +293,11 @@ jobs:
           }
           finally {
             if ($pushed) { Pop-Location -ErrorAction SilentlyContinue }
+            if ($null -ne $trustedRootStore) {
+              $trustedRootStore.Remove($signingCertificate)
+              $trustedRootStore.Dispose()
+            }
+            $signingCertificate.Dispose()
             if (Test-Path $certificatePath) { Remove-Item $certificatePath -Force }
           }
 
