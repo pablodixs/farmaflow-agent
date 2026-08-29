@@ -15,13 +15,24 @@
     <ApplicationIcon>..\main\resources\ico.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
+    <ProjectReference Include="..\FarmaFlow.Migration.Core\FarmaFlow.Migration.Core.csproj" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.12" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.3650.58" />
     <PackageReference Include="PdfiumPrinter" Version="1.4.1" />
-    <PackageReference Include="bblanchon.PDFium.Win32" Version="152.0.7961" />
+    <PackageReference Include="bblanchon.PDFium.Win32" Version="152.0.7961" GeneratePathProperty="true" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
     <PackageReference Include="System.Text.Encoding.CodePages" Version="8.0.0" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="..\main\resources\ico.ico" LogicalName="FarmaFlow.Agent.Assets.farmaflow.ico" />
   </ItemGroup>
+  <!-- PdfiumPrinter resolves the native binary from this physical path. It
+       cannot load it from inside the single-file executable, so copy it after
+       bundling has completed. -->
+  <Target Name="CopyPdfiumNativeLibrary" AfterTargets="Publish">
+    <MakeDir Directories="$(PublishDir)runtimes\win-x64\native" />
+    <Copy SourceFiles="$(Pkgbblanchon_PDFium_Win32)\runtimes\win-x64\native\pdfium.dll"
+          DestinationFolder="$(PublishDir)runtimes\win-x64\native"
+          SkipUnchangedFiles="true" />
+  </Target>
 </Project>

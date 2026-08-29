@@ -1,8 +1,8 @@
-# FarmaFlow Agent
+# FarmaFlow Local
 
-Companion Windows do FarmaFlow. A aplicação roda por usuário na bandeja do
-Windows, expõe uma API somente em `127.0.0.1:3333`, integra impressoras locais e
-mantém uma outbox SQLite para a evolução do modo offline.
+Distribuição Windows local do FarmaFlow. Este repositório contém a estação com
+WebView2 e impressão, o Host do servidor local, a ferramenta administrativa de
+migração e os instaladores Inno Setup.
 
 ## Requisitos de desenvolvimento
 
@@ -39,11 +39,27 @@ backend é protegida com DPAPI para o usuário atual do Windows.
 
 ## Build e release
 
-Pull requests e pushes em `master` executam o build `win-x64` no GitHub
-Actions. Uma tag como `v1.0.0` publica automaticamente:
+Pull requests e pushes em `master` validam os componentes .NET em `win-x64`.
+O workflow **Build Windows installers** combina este repositório com
+`pablodixs/farmaflow.backend` e `pablodixs/farmaflow`, podendo receber branch,
+tag ou commit para cada fonte. Uma tag como `v1.0.0` publica automaticamente:
 
-- `FarmaFlowAgent-Setup.exe`
+- `FarmaFlow-Server-Setup.exe`
+- `FarmaFlow-Estacao-Setup.exe`
+- `FarmaFlow-Migracao-Setup.exe`
+- `FarmaFlow-Migration.zip`
+- `release-manifest.json`
 - `SHA256SUMS.txt`
 
-O instalador é autocontido, não exige runtime .NET previamente instalado e
-configura a inicialização do agente no login do usuário.
+Os instaladores são autocontidos. O manifesto registra os commits exatos e as
+versões dos runtimes usados. Veja [installer/README.md](installer/README.md)
+para configuração de acesso entre repositórios e assinatura Authenticode.
+
+O bundle também publica `FarmaFlow-Migracao-Setup.exe`, o assistente gráfico
+para preparar o ensaio/corte sem executar PowerShell manualmente.
+
+Para a operação normal, comece pelo [guia rápido local](docs/GUIA-RAPIDO-LOCAL.md).
+
+O procedimento completo de build, ensaio, migração do Supabase, instalação,
+pareamento, go-live, backup e rollback está em
+[docs/GUIA-INSTALACAO-COMPLETA.md](docs/GUIA-INSTALACAO-COMPLETA.md).

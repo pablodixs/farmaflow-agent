@@ -1,6 +1,7 @@
 using FarmaFlow.Agent;
 using FarmaFlow.Agent.Infrastructure;
 using FarmaFlow.Agent.Services;
+using FarmaFlow.Migration.Core;
 using Microsoft.AspNetCore.Http.Features;
 using System.Runtime.InteropServices;
 
@@ -17,33 +18,65 @@ try
     };
 
     var builder = WebApplication.CreateBuilder(args);
-var options = builder.Configuration.GetSection("Agent").Get<AgentOptions>() ?? new AgentOptions();
-builder.WebHost.UseUrls($"http://127.0.0.1:{options.Port}");
-builder.Services.AddSingleton(options);
-builder.Services.AddSingleton<AgentStore>();
-builder.Services.AddSingleton<LocalAccessService>();
-builder.Services.AddSingleton<PrintingService>();
-builder.Services.AddSingleton<PdfPrintService>();
-builder.Services.AddSingleton<HttpClient>();
-builder.Services.AddSingleton<PairingService>();
-builder.Services.AddHostedService<HeartbeatWorker>();
-builder.Services.Configure<FormOptions>(value => value.MultipartBodyLengthLimit = 30 * 1024 * 1024);
-builder.Services.AddCors(cors => cors.AddDefaultPolicy(policy => policy.WithOrigins(options.AllowedOrigins).AllowAnyHeader().AllowAnyMethod()));
-
-var app = builder.Build();
-app.UseCors();
-
-var access = app.Services.GetRequiredService<LocalAccessService>();
-app.Use(async (context, next) =>
-{
-    var publicPath = context.Request.Path == "/agent/health" || context.Request.Path == "/agent/local/handshake";
-    if (!publicPath && !access.IsValid(context.Request.Headers.Authorization))
+    var options = builder.Configuration.GetSection("Agent").Get<AgentOptions>() ?? new AgentOptions();
+    var connections = new DesktopConnectionStore(options);
+    string? stationPackage = args.FirstOrDefault(value => value.EndsWith(".ffstation", StringComparison.OrdinalIgnoreCase));
+    if (string.IsNullOrWhiteSpace(stationPackage) && string.IsNullOrWhiteSpace(connections.Load().CertificateSha256))
     {
-        context.Response.StatusCode = StatusCodes.Status401Unauthorized;
-        return;
+        string[] adjacentPackages = Directory.Exists(AppContext.BaseDirectory)
+            ? Directory.GetFiles(AppContext.BaseDirectory, "*.ffstation")
+            : [];
+        if (adjacentPackages.Length == 1) stationPackage = adjacentPackages[0];
     }
-    await next();
-});
+    if (!string.IsNullOrWhiteSpace(stationPackage))
+    {
+        try
+        {
+            StationBootstrapInfo station = StationBootstrapPackage.ReadAndValidate(stationPackage);
+            DialogResult confirmation = MessageBox.Show(
+                $"Conectar esta estação à {station.StoreName}?",
+                "FarmaFlow",
+                MessageBoxButtons.YesNo,
+                MessageBoxIcon.Question,
+                MessageBoxDefaultButton.Button1);
+            if (confirmation != DialogResult.Yes) return;
+            connections.Save(new DesktopConnection(station.ServerUrl, station.CertificateSha256));
+        }
+        catch (Exception exception) { StartupDiagnostics.ReportFatal(exception, "Arquivo de configuração de estação inválido."); return; }
+    }
+    builder.WebHost.UseUrls($"http://127.0.0.1:{options.Port}");
+    builder.Services.AddSingleton(options);
+    builder.Services.AddSingleton(connections);
+    builder.Services.AddSingleton<AgentStore>();
+    builder.Services.AddSingleton<LocalAccessService>();
+    builder.Services.AddSingleton<PrintingService>();
+    builder.Services.AddSingleton<PdfPrintService>();
+    builder.Services.AddSingleton(new HttpClient(new HttpClientHandler
+    {
+        ServerCertificateCustomValidationCallback = connections.IsValidCertificate
+    }));
+    builder.Services.AddSingleton<PairingService>();
+    builder.Services.AddHostedService<HeartbeatWorker>();
+    builder.Services.Configure<FormOptions>(value => value.MultipartBodyLengthLimit = 30 * 1024 * 1024);
+    builder.Services.AddCors(cors => cors.AddDefaultPolicy(policy => policy
+        .SetIsOriginAllowed(connections.IsAllowedOrigin)
+        .AllowAnyHeader()
+        .AllowAnyMethod()));
+
+    var app = builder.Build();
+    app.UseCors();
+
+    var access = app.Services.GetRequiredService<LocalAccessService>();
+    app.Use(async (context, next) =>
+    {
+        var publicPath = context.Request.Path == "/agent/health" || context.Request.Path == "/agent/local/handshake";
+        if (!publicPath && !access.IsValid(context.Request.Headers.Authorization))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return;
+        }
+        await next();
+    });
 
 app.MapGet("/agent/health", (AgentStore store) => Results.Ok(new
 {
@@ -57,6 +90,22 @@ app.MapPost("/agent/local/handshake", (HandshakeRequest request, LocalAccessServ
 {
     try { return Results.Ok(new { token = local.Exchange(request.Challenge), expiresInSeconds = 43_200 }); }
     catch (InvalidOperationException exception) { return Results.BadRequest(new { message = exception.Message }); }
+});
+app.MapPost("/agent/pair", async (AgentPairRequest request, PairingService pairing, CancellationToken cancellationToken) =>
+{
+    try
+    {
+        var result = await pairing.PairAsync(request.Code, cancellationToken);
+        return Results.Ok(new { stationId = result.StationId, paired = result.Paired, message = "Estação pareada com sucesso." });
+    }
+    catch (HttpRequestException)
+    {
+        return Results.Problem(detail: "Não foi possível parear com o servidor da loja.", statusCode: StatusCodes.Status502BadGateway);
+    }
+    catch (InvalidOperationException exception)
+    {
+        return Results.BadRequest(new { message = exception.Message });
+    }
 });
 app.MapGet("/agent/status", (AgentStore store) => Results.Ok(new
 {
@@ -102,7 +151,10 @@ app.MapPost("/offline/operations", (OfflineOperation request, AgentStore store) 
         return;
     }
 
-    var tray = new TrayApplicationContext(options, app.Services.GetRequiredService<PairingService>(), app.Services.GetRequiredService<AgentStore>());
+    var tray = new TrayApplicationContext(
+        app.Services.GetRequiredService<DesktopConnectionStore>(),
+        app.Services.GetRequiredService<PairingService>(),
+        app.Services.GetRequiredService<AgentStore>());
     Application.Run(tray);
     await app.StopAsync();
 }
@@ -120,5 +172,6 @@ catch (Exception exception)
 }
 
 internal sealed record HandshakeRequest(string Challenge);
+internal sealed record AgentPairRequest(string Code);
 internal sealed record PrintTestRequest(string PrinterName, string? PaperWidth);
 internal sealed record OfflineOperation(string Type, object Payload);

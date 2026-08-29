@@ -15,5 +15,6 @@
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\FarmaFlow.Agent\FarmaFlow.Agent.csproj" />
+    <ProjectReference Include="..\..\src\FarmaFlow.Migration.Core\FarmaFlow.Migration.Core.csproj" />
   </ItemGroup>
 </Project>
