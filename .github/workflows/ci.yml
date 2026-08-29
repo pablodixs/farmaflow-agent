@@ -90,15 +90,20 @@ jobs:
       - name: Smoke test portable PostgreSQL
         shell: pwsh
         run: |
-          & .\publish-migration\FarmaFlowMigracaoSetup.exe --smoke-test-postgres
-          if ($LASTEXITCODE -ne 0) { throw "O PostgreSQL portátil não conseguiu inicializar, iniciar e limpar um cluster temporário." }
+          $process = Start-Process -FilePath .\publish-migration\FarmaFlowMigracaoSetup.exe `
+            -ArgumentList "--smoke-test-postgres" -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw "O PostgreSQL portátil não conseguiu inicializar, iniciar e limpar um cluster temporário." }
       - name: Verify native PDF printing library
         shell: pwsh
         run: |
           $pdfium = "publish\runtimes\win-x64\native\pdfium.dll"
           if (-not (Test-Path $pdfium)) { throw "Missing native PDFium library: $pdfium" }
       - name: Smoke test published executable
-        run: .\publish\FarmaFlowAgent.exe --smoke-test
+        shell: pwsh
+        run: |
+          $process = Start-Process -FilePath .\publish\FarmaFlowAgent.exe `
+            -ArgumentList "--smoke-test" -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw "Smoke test da estação falhou." }
       - uses: actions/upload-artifact@v4
         with:
           name: FarmaFlow-Estacao-win-x64

@@ -214,8 +214,9 @@ jobs:
       - name: Smoke test portable PostgreSQL
         shell: pwsh
         run: |
-          & agent\publish-migration\FarmaFlowMigracaoSetup.exe --smoke-test-postgres
-          if ($LASTEXITCODE -ne 0) { throw "O PostgreSQL portátil não conseguiu inicializar, iniciar e limpar um cluster temporário." }
+          $process = Start-Process -FilePath agent\publish-migration\FarmaFlowMigracaoSetup.exe `
+            -ArgumentList "--smoke-test-postgres" -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw "O PostgreSQL portátil não conseguiu inicializar, iniciar e limpar um cluster temporário." }
 
       - name: Bundle and verify WebView2 bootstrapper
         shell: pwsh
@@ -232,8 +233,9 @@ jobs:
         run: |
           $pdfium = "agent\publish\runtimes\win-x64\native\pdfium.dll"
           if (-not (Test-Path $pdfium)) { throw "Biblioteca PDFium ausente: $pdfium" }
-          & agent\publish\FarmaFlowAgent.exe --smoke-test
-          if ($LASTEXITCODE -ne 0) { throw "Smoke test da estação falhou." }
+          $process = Start-Process -FilePath agent\publish\FarmaFlowAgent.exe `
+            -ArgumentList "--smoke-test" -Wait -PassThru -NoNewWindow
+          if ($process.ExitCode -ne 0) { throw "Smoke test da estação falhou." }
 
       - name: Compile and sign installers
         shell: pwsh
