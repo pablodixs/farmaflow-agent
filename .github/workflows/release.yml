@@ -251,14 +251,6 @@ jobs:
             $env:WINDOWS_SIGNING_CERT_PASSWORD,
             [System.Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet)
           $isSelfSigned = $signingCertificate.Subject -eq $signingCertificate.Issuer
-          $trustedRootStore = $null
-          if ($isSelfSigned) {
-            $trustedRootStore = [System.Security.Cryptography.X509Certificates.X509Store]::new(
-              [System.Security.Cryptography.X509Certificates.StoreName]::Root,
-              [System.Security.Cryptography.X509Certificates.StoreLocation]::CurrentUser)
-            $trustedRootStore.Open([System.Security.Cryptography.X509Certificates.OpenFlags]::ReadWrite)
-            $trustedRootStore.Add($signingCertificate)
-          }
           $signTool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin" -Filter signtool.exe -Recurse |
             Where-Object { $_.FullName -match '\\x64\\signtool\.exe$' } |
             Sort-Object FullName -Descending |
@@ -280,8 +272,14 @@ jobs:
             }
             if ($LASTEXITCODE -ne 0) { throw "Assinatura falhou: $path" }
             $signature = Get-AuthenticodeSignature $path
-            if ($signature.Status -ne "Valid" -or $signature.SignerCertificate.Thumbprint -ne $signingCertificate.Thumbprint) {
+            if ($null -eq $signature.SignerCertificate -or $signature.SignerCertificate.Thumbprint -ne $signingCertificate.Thumbprint) {
+              throw "O assinante Authenticode não corresponde ao certificado esperado em $path."
+            }
+            if (-not $isSelfSigned -and $signature.Status -ne "Valid") {
               throw "Assinatura Authenticode inválida em $path`: $($signature.Status)"
+            }
+            if ($isSelfSigned) {
+              Write-Host "Certificado de teste autoassinado verificado pelo thumbprint (status da cadeia: $($signature.Status))."
             }
             Write-Host "$name assinado em $([Math]::Round(((Get-Date) - $startedAt).TotalSeconds, 1)) s."
           }
@@ -312,10 +310,6 @@ jobs:
           }
           finally {
             if ($pushed) { Pop-Location -ErrorAction SilentlyContinue }
-            if ($null -ne $trustedRootStore) {
-              $trustedRootStore.Remove($signingCertificate)
-              $trustedRootStore.Dispose()
-            }
             $signingCertificate.Dispose()
             if (Test-Path $certificatePath) { Remove-Item $certificatePath -Force }
           }
