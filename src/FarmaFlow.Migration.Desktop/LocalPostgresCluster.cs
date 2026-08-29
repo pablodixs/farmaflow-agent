@@ -53,7 +53,7 @@ internal sealed class LocalPostgresCluster : IAsyncDisposable
             string serverLog = Path.Combine(root, "postgres.log");
             ProcessResult start = await ProcessRunner.RunAsync(
                 Path.Combine(postgresBin, "pg_ctl.exe"),
-                ["start", "--pgdata", root, "--wait", "--timeout", "60", "--log", serverLog, "--options", $"-p {port}"],
+                ["start", "-D", root, "-w", "-t", "60", "-l", serverLog, "-o", $"-p {port}"],
                 cancellationToken: cancellationToken);
             if (start.ExitCode != 0)
             {
