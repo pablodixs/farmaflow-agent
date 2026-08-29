@@ -296,44 +296,6 @@ async Task RestoreAsync(IReadOnlyDictionary<string, string> values)
     }
 }
 
-async Task<byte[]> DecryptAsync(string input, string password)
-{
-    byte[] header = await File.ReadAllBytesAsync(input);
-    if (header.AsSpan().StartsWith("FFMIG2"u8))
-    {
-        CryptographicOperations.ZeroMemory(header);
-        return (await PackageEnvelope.ReadAsync(input, password)).Plaintext;
-    }
-    CryptographicOperations.ZeroMemory(header);
-    byte[] payload = await File.ReadAllBytesAsync(input);
-    if (payload.Length < magic.Length + 48 || !payload.AsSpan(0, magic.Length).SequenceEqual(magic))
-        throw new InvalidDataException("O arquivo não é um pacote FarmaFlow válido.");
-    int version = BitConverter.ToInt32(payload, magic.Length);
-    if (version != formatVersion) throw new InvalidDataException($"Versão de pacote não suportada: {version}");
-    int offset = magic.Length + sizeof(int);
-    byte[] salt = payload.AsSpan(offset, 16).ToArray();
-    byte[] nonce = payload.AsSpan(offset + 16, 12).ToArray();
-    byte[] tag = payload.AsSpan(offset + 28, 16).ToArray();
-    byte[] ciphertext = payload.AsSpan(offset + 44).ToArray();
-    byte[] plaintext = new byte[ciphertext.Length];
-    byte[] key = Rfc2898DeriveBytes.Pbkdf2(password, salt, 600_000, HashAlgorithmName.SHA256, 32);
-    try
-    {
-        using var aes = new AesGcm(key, tag.Length);
-        aes.Decrypt(nonce, ciphertext, tag, plaintext, magic);
-        return plaintext;
-    }
-    catch (CryptographicException)
-    {
-        CryptographicOperations.ZeroMemory(plaintext);
-        throw new InvalidDataException("Senha incorreta ou pacote adulterado.");
-    }
-    finally
-    {
-        CryptographicOperations.ZeroMemory(key);
-    }
-}
-
 async Task RestoreServerBackupAsync(IReadOnlyDictionary<string, string> values)
 {
     string input = Path.GetFullPath(Required(values, "input"));

@@ -98,9 +98,9 @@ app.MapPost("/agent/pair", async (AgentPairRequest request, PairingService pairi
         var result = await pairing.PairAsync(request.Code, cancellationToken);
         return Results.Ok(new { stationId = result.StationId, paired = result.Paired, message = "Estação pareada com sucesso." });
     }
-    catch (HttpRequestException exception)
+    catch (HttpRequestException)
     {
-        return Results.Problem("Não foi possível parear com o servidor da loja.", statusCode: StatusCodes.Status502BadGateway, detail: exception.Message);
+        return Results.Problem(detail: "Não foi possível parear com o servidor da loja.", statusCode: StatusCodes.Status502BadGateway);
     }
     catch (InvalidOperationException exception)
     {

@@ -196,7 +196,7 @@ internal sealed class ServerSetupForm : Form
         throw new InvalidOperationException("O servidor foi ativado, mas não concluiu o teste de saúde em https://127.0.0.1:8443.");
     }
 
-    private static async Task CreateStationKitAsync(string serviceRoot, string installRoot, string databasePassword, CancellationToken cancellationToken)
+    private async Task CreateStationKitAsync(string serviceRoot, string installRoot, string databasePassword, CancellationToken cancellationToken)
     {
         string stationInstaller = Path.Combine(installRoot, "FarmaFlow-Estacao-Setup.exe");
         if (!File.Exists(stationInstaller)) throw new InvalidOperationException("O instalador da estação não foi incluído nesta release.");
