@@ -560,22 +560,7 @@ static SslMode ResolveSslMode(IReadOnlyDictionary<string, string> values, string
         : throw new InvalidOperationException($"ssl-mode inválido: {configured}.");
 }
 
-static string ReadSecret(string prompt)
-{
-    Console.Write(prompt);
-    if (Console.IsInputRedirected)
-        return Console.ReadLine() ?? string.Empty;
-    var result = new StringBuilder();
-    while (true)
-    {
-        ConsoleKeyInfo key = Console.ReadKey(intercept: true);
-        if (key.Key == ConsoleKey.Enter) break;
-        if (key.Key == ConsoleKey.Backspace && result.Length > 0) result.Length--;
-        else if (!char.IsControl(key.KeyChar)) result.Append(key.KeyChar);
-    }
-    Console.WriteLine();
-    return result.ToString();
-}
+static string ReadSecret(string prompt) => FarmaFlow.Migration.ProcessSecretReader.Read(prompt);
 
 static async Task<string> Sha256FileAsync(string path)
 {

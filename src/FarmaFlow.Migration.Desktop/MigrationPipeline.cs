@@ -233,8 +233,16 @@ internal sealed class MigrationPipeline
         var secrets = new List<string>();
         if (firstSecret is not null) secrets.Add(firstSecret);
         if (secondSecret is not null) secrets.Add(secondSecret);
-        if (confirmation is not null) secrets.Add(confirmation);
-        return await ProcessRunner.RunAsync(_migrationExecutable, [command, .. arguments], secrets, cancellationToken: cancellationToken);
+        List<string>? standardInput = null;
+        if (confirmation is not null)
+        {
+            if (command == "filter-store-staging") standardInput = [confirmation];
+            else secrets.Add(confirmation);
+        }
+        var environment = secrets.Select((secret, index) => new KeyValuePair<string, string>($"FARMAFLOW_SECRET_{index + 1}", secret))
+            .ToDictionary(pair => pair.Key, pair => pair.Value, StringComparer.Ordinal);
+        return await ProcessRunner.RunAsync(_migrationExecutable, [command, .. arguments], standardInput,
+            environment, cancellationToken: cancellationToken);
     }
 
     private static async Task ConvertLegacyPackageAsync(string sourcePath, string destinationPath, string password, CancellationToken cancellationToken)
