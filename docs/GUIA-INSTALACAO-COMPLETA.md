@@ -103,7 +103,9 @@ Para assinar os instaladores, configure também:
 - `WINDOWS_SIGNING_CERT_BASE64`: conteúdo Base64 do PFX;
 - `WINDOWS_SIGNING_CERT_PASSWORD`: senha do PFX.
 
-Sem esses secrets de assinatura, os instaladores são gerados sem Authenticode. Não use um instalador sem assinatura em produção sem uma aprovação registrada.
+Os três secrets são obrigatórios. O workflow interrompe antes do build quando
+algum deles está ausente e também verifica o `Status=Valid` dos três instaladores
+depois de assinar.
 
 ### 5.2 Executar o workflow
 
@@ -146,17 +148,19 @@ Set-Location "C:\FarmaFlow\Release"
 Get-Content .\SHA256SUMS.txt
 Get-FileHash .\FarmaFlow-Server-Setup.exe -Algorithm SHA256
 Get-FileHash .\FarmaFlow-Estacao-Setup.exe -Algorithm SHA256
+Get-FileHash .\FarmaFlow-Migracao-Setup.exe -Algorithm SHA256
 Get-FileHash .\FarmaFlow-Migration.zip -Algorithm SHA256
 Get-FileHash .\release-manifest.json -Algorithm SHA256
 ```
 
 Cada resultado deve coincidir com `SHA256SUMS.txt`. Confira também os três commits em `release-manifest.json`.
 
-Se Authenticode estiver configurado:
+Confira o Authenticode obrigatório:
 
 ```powershell
 Get-AuthenticodeSignature .\FarmaFlow-Server-Setup.exe
 Get-AuthenticodeSignature .\FarmaFlow-Estacao-Setup.exe
+Get-AuthenticodeSignature .\FarmaFlow-Migracao-Setup.exe
 ```
 
 O campo `Status` deve ser `Valid`.
@@ -166,6 +170,7 @@ Em um repositório público, a proveniência também pode ser conferida com GitH
 ```powershell
 gh attestation verify .\FarmaFlow-Server-Setup.exe --repo pablodixs/farmaflow-agent
 gh attestation verify .\FarmaFlow-Estacao-Setup.exe --repo pablodixs/farmaflow-agent
+gh attestation verify .\FarmaFlow-Migracao-Setup.exe --repo pablodixs/farmaflow-agent
 ```
 
 ## 6. Fazer um ensaio completo
@@ -274,16 +279,16 @@ Criptografe `roles.sql`, `schema.sql` e `data.sql` com o método aprovado pela e
 
 Execute esta etapa somente depois de criar e validar o primeiro backup lógico.
 
-1. No painel do Supabase, abra as configurações do **Data API**.
-2. Retire `public` da lista de schemas expostos.
+1. No painel do Supabase, abra **Project Settings → Integrations → Data API**.
+2. Como o FarmaFlow usa JDBC e não usa REST/GraphQL, prefira desativar o Data API. Como alternativa, retire `public` da lista de schemas expostos.
 3. Conecte-se com um papel administrativo.
 4. Execute `harden_data_api.sql`, incluído em `FarmaFlow-Migration.zip`.
 5. Execute `verify_data_api_security.sql`.
-6. Confirme que a consulta de privilégios não retorna concessões para `anon` ou `authenticated` em `public`.
+6. Confirme que a consulta de privilégios não retorna concessões para `anon`, `authenticated` ou `service_role` em `public`.
 7. Faça uma chamada REST com a chave pública e confirme que nenhum dado de aplicação é devolvido.
 8. Teste login, refresh, APIs Spring e Flyway pelo backend cloud.
 
-O endurecimento revoga tabelas, sequências, funções e privilégios padrão desses papéis. Ele não remove o acesso do papel JDBC usado pelo Spring. Alterações recentes do Supabase também caminham para não expor novas tabelas automaticamente, mas isso não elimina privilégios antigos já existentes; consulte o [changelog do Supabase](https://supabase.com/changelog).
+O endurecimento revoga tabelas, sequências, funções e privilégios padrão desses papéis, além do `EXECUTE` herdado de `PUBLIC`. Ele não remove o acesso do papel JDBC usado pelo Spring. Alterações recentes do Supabase também caminham para não expor novas tabelas automaticamente, mas isso não elimina privilégios antigos já existentes; consulte o [changelog do Supabase](https://supabase.com/changelog).
 
 ## 9. Gerar um pacote para cada loja
 

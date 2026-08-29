@@ -8,7 +8,7 @@ $serviceRoot = Join-Path $env:ProgramData "FarmaFlow\Server"
 $databaseRoot = Join-Path $serviceRoot "postgres-data"
 $runtimeRoot = Join-Path $InstallDirectory "runtime"
 $postgresBin = Join-Path $runtimeRoot "postgres\bin"
-$passwordFile = Join-Path $env:TEMP "farmaflow-postgres-password.txt"
+$passwordFile = Join-Path $env:TEMP "farmaflow-postgres-password-$([Guid]::NewGuid().ToString('N')).txt"
 
 function New-RandomSecret([int]$bytes = 32) {
     $buffer = New-Object byte[] $bytes
@@ -29,11 +29,12 @@ if (-not (Test-Path $secretsPath)) {
         BackupKey = New-RandomSecret 32
     }
     $secrets | ConvertTo-Json | Set-Content -Path $secretsPath -Encoding UTF8
-    & icacls.exe $secretsPath /inheritance:r /grant:r "SYSTEM:(F)" "Administrators:(F)" | Out-Null
 } else {
     $secrets = Get-Content $secretsPath -Raw | ConvertFrom-Json
     $databasePassword = $secrets.DatabasePassword
 }
+& icacls.exe $secretsPath /inheritance:r /grant:r "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Não foi possível proteger secrets.json com ACL do Windows." }
 
 if (-not (Test-Path (Join-Path $databaseRoot "PG_VERSION"))) {
     Set-Content -Path $passwordFile -Value $databasePassword -NoNewline -Encoding ASCII
@@ -80,8 +81,11 @@ if ($null -ne (Get-Service -Name "FarmaFlowServer" -ErrorAction SilentlyContinue
     Start-Sleep -Seconds 1
 }
 & sc.exe create "FarmaFlowServer" "binPath= `"$hostExecutable`"" "start= demand" "DisplayName= FarmaFlow Server" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Não foi possível registrar o serviço FarmaFlow Server." }
 & sc.exe failure "FarmaFlowServer" "reset= 86400" "actions= restart/5000/restart/15000/restart/30000" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Não foi possível configurar a recuperação do serviço FarmaFlow Server." }
 & sc.exe description "FarmaFlowServer" "Servidor local, proxy HTTPS e supervisor do FarmaFlow" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Não foi possível configurar a descrição do serviço FarmaFlow Server." }
 
 $ruleName = "FarmaFlow Server HTTPS"
 if ($null -eq (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue)) {
@@ -90,8 +94,16 @@ if ($null -eq (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyC
 
 $env:PGPASSWORD = $databasePassword
 try {
-    $schemaVersion = & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COALESCE((SELECT MAX(version) FROM public.flyway_schema_history WHERE success), '0')" 2>$null
-    $storeCount = & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COUNT(*) FROM public.stores" 2>$null
+    $schemaTableExists = & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT to_regclass('public.flyway_schema_history') IS NOT NULL"
+    if ($LASTEXITCODE -ne 0) { throw "Não foi possível verificar o schema local." }
+    $storesTableExists = & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT to_regclass('public.stores') IS NOT NULL"
+    if ($LASTEXITCODE -ne 0) { throw "Não foi possível verificar as lojas locais." }
+    $schemaVersion = if ($schemaTableExists.Trim() -eq "t") {
+        & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COALESCE(MAX(version), '0') FROM public.flyway_schema_history WHERE success"
+    } else { "0" }
+    $storeCount = if ($storesTableExists.Trim() -eq "t") {
+        & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COUNT(*) FROM public.stores"
+    } else { "0" }
 } finally {
     Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 }

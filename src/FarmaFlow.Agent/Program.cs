@@ -9,6 +9,9 @@ try
 {
     ApplicationConfiguration.Initialize();
     System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+    bool smokeTest = args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase);
+    string mutexName = smokeTest ? $"Local\\FarmaFlowAgent-Smoke-{Environment.ProcessId}" : "Local\\FarmaFlowAgent";
+    using var instanceMutex = new Mutex(true, mutexName, out bool ownsInstance);
     Application.ThreadException += (_, eventArgs) =>
         StartupDiagnostics.ReportFatal(eventArgs.Exception, "Falha não tratada na interface do agente.");
     AppDomain.CurrentDomain.UnhandledException += (_, eventArgs) =>
@@ -41,8 +44,22 @@ try
                 MessageBoxDefaultButton.Button1);
             if (confirmation != DialogResult.Yes) return;
             connections.Save(new DesktopConnection(station.ServerUrl, station.CertificateSha256));
+            if (!ownsInstance)
+            {
+                MessageBox.Show(
+                    "A configuração da loja foi atualizada. Abra o FarmaFlow pelo ícone que já está na bandeja do Windows.",
+                    "FarmaFlow",
+                    MessageBoxButtons.OK,
+                    MessageBoxIcon.Information);
+                return;
+            }
         }
         catch (Exception exception) { StartupDiagnostics.ReportFatal(exception, "Arquivo de configuração de estação inválido."); return; }
+    }
+    if (!ownsInstance)
+    {
+        MessageBox.Show("O FarmaFlow já está em execução na bandeja do Windows.", "FarmaFlow", MessageBoxButtons.OK, MessageBoxIcon.Information);
+        return;
     }
     builder.WebHost.UseUrls($"http://127.0.0.1:{options.Port}");
     builder.Services.AddSingleton(options);
@@ -142,7 +159,7 @@ app.MapGet("/print/pdf/{jobId}/status", (string jobId, PdfPrintService pdf) =>
 app.MapPost("/offline/operations", (OfflineOperation request, AgentStore store) => { store.Enqueue(request.Type, request.Payload); return Results.Accepted(value: new { queued = true }); });
 
     await app.StartAsync();
-    if (args.Contains("--smoke-test", StringComparer.OrdinalIgnoreCase))
+    if (smokeTest)
     {
         using var smokeClient = new HttpClient();
         using var smokeResponse = await smokeClient.GetAsync($"http://127.0.0.1:{options.Port}/agent/health");

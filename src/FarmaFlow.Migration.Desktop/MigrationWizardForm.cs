@@ -9,13 +9,14 @@ internal sealed class MigrationWizardForm : Form
     private readonly ComboBox _mode = new() { DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly TextBox _connection = new() { PlaceholderText = "postgresql://usuario@host:5432/postgres" };
     private readonly TextBox _sourcePassword = new() { UseSystemPasswordChar = true };
+    private readonly TextBox _projectUrl = new() { PlaceholderText = "Opcional: https://<project-ref>.supabase.co" };
     private readonly TextBox _packagePassword = new() { UseSystemPasswordChar = true };
     private readonly TextBox _publicApiKey = new() { UseSystemPasswordChar = true, PlaceholderText = "Chave pública anon (somente para o teste)" };
     private readonly TextBox _output = new() { Text = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "FarmaFlow-Corte") };
     private readonly CheckedListBox _stores = new() { Dock = DockStyle.Fill, CheckOnClick = true };
     private readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Dock = DockStyle.Fill };
     private readonly CheckBox _maintenance = new() { Text = "O backend cloud está em manutenção e nenhuma gravação está ocorrendo.", AutoSize = true };
-    private readonly CheckBox _dataApi = new() { Text = "Removi public dos schemas expostos, testei a chamada REST negada e confirmei login/API Spring.", AutoSize = true };
+    private readonly CheckBox _dataApi = new() { Text = "Desativei o Data API ou removi public dos schemas expostos; também confirmei login/API Spring.", AutoSize = true };
     private readonly Button _next = new() { Text = "Continuar", AutoSize = true };
     private readonly Button _back = new() { Text = "Voltar", AutoSize = true, Enabled = false };
     private readonly Button _run = new() { Text = "Gerar pacotes", AutoSize = true };
@@ -65,6 +66,7 @@ internal sealed class MigrationWizardForm : Form
         var panel = PagePanel();
         AddField(panel, "Conexão PostgreSQL do Supabase", _connection);
         AddField(panel, "Senha do PostgreSQL", _sourcePassword);
+        AddField(panel, "URL do projeto Supabase", _projectUrl);
         panel.Controls.Add(new Label { Text = "Use a conexão direta ou o pooler de sessão exibido em Connect. A senha fica somente na memória.", AutoSize = true, Dock = DockStyle.Top, Padding = new Padding(0, 12, 0, 0) });
         return panel;
     }
@@ -90,12 +92,8 @@ internal sealed class MigrationWizardForm : Form
         {
             try
             {
-                string host = ParseSource(_connection.Text, string.Empty).Host;
-                string projectHost = host.StartsWith("db.", StringComparison.OrdinalIgnoreCase) ? host[3..] : host;
-                string projectRef = projectHost.EndsWith(".supabase.co", StringComparison.OrdinalIgnoreCase)
-                    ? projectHost[..^".supabase.co".Length].Split('.')[0]
-                    : "_";
-                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"https://supabase.com/dashboard/project/{projectRef}/settings/api") { UseShellExecute = true });
+                SupabaseProjectAddress project = ParseSource(_connection.Text, string.Empty, _projectUrl.Text).Project;
+                System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo($"https://supabase.com/dashboard/project/{project.ProjectRef}/integrations/data_api/settings") { UseShellExecute = true });
             }
             catch (Exception exception) { ShowError(exception.Message); }
         };
@@ -117,7 +115,7 @@ internal sealed class MigrationWizardForm : Form
         {
             try
             {
-                MigrationSource source = ParseSource(_connection.Text, _sourcePassword.Text);
+                MigrationSource source = ParseSource(_connection.Text, _sourcePassword.Text, _projectUrl.Text);
                 MigrationPipeline.ValidateRuntime(PostgresBin());
                 var pipeline = new MigrationPipeline(MigrationExecutable());
                 _discoveredStores = await pipeline.DiscoverStoresAsync(source, CancellationToken.None);
@@ -141,7 +139,7 @@ internal sealed class MigrationWizardForm : Form
             bool final = _mode.SelectedIndex == 1;
             if (final && !_maintenance.Checked) throw new InvalidOperationException("Confirme a manutenção do backend cloud antes do corte.");
             if (final && !_dataApi.Checked) throw new InvalidOperationException("Confirme a proteção do Data API antes do corte.");
-            MigrationSource source = ParseSource(_connection.Text, _sourcePassword.Text);
+            MigrationSource source = ParseSource(_connection.Text, _sourcePassword.Text, _projectUrl.Text);
             _tabs.SelectedIndex = 4; _run.Enabled = false; _next.Enabled = false; _back.Enabled = false;
             _cancellation = new CancellationTokenSource();
             var progress = new Progress<OperationProgress>(item => Append($"{item.Percent,3}%  {item.Message}"));
@@ -181,7 +179,7 @@ internal sealed class MigrationWizardForm : Form
     private string MigrationExecutable() => Path.Combine(AppContext.BaseDirectory, "FarmaFlow.Migration.exe");
     private string PostgresBin() => Path.Combine(AppContext.BaseDirectory, "postgres", "bin");
 
-    private static MigrationSource ParseSource(string value, string password)
+    private static MigrationSource ParseSource(string value, string password, string? projectUrl = null)
     {
         if (!Uri.TryCreate(value.Trim(), UriKind.Absolute, out Uri? uri) || uri.Scheme is not ("postgres" or "postgresql"))
             throw new InvalidOperationException("Informe uma conexão PostgreSQL válida.");
@@ -190,7 +188,9 @@ internal sealed class MigrationWizardForm : Form
         string database = uri.AbsolutePath.Trim('/');
         if (string.IsNullOrWhiteSpace(database)) database = "postgres";
         string ssl = QueryValue(uri.Query, "sslmode") ?? "Require";
-        return new MigrationSource(uri.Host, uri.Port > 0 ? uri.Port : 5432, database, Uri.UnescapeDataString(user), password, ssl);
+        string username = Uri.UnescapeDataString(user);
+        SupabaseProjectAddress project = SupabaseProjectAddress.Resolve(uri.Host, username, projectUrl);
+        return new MigrationSource(uri.Host, uri.Port > 0 ? uri.Port : 5432, database, username, password, ssl, project);
     }
 
     private static string? QueryValue(string query, string key)

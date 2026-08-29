@@ -52,8 +52,10 @@ tag ou commit para cada fonte. Uma tag como `v1.0.0` publica automaticamente:
 - `SHA256SUMS.txt`
 
 Os instaladores são autocontidos. O manifesto registra os commits exatos e as
-versões dos runtimes usados. Veja [installer/README.md](installer/README.md)
-para configuração de acesso entre repositórios e assinatura Authenticode.
+versões dos runtimes usados. O release exige o token somente leitura dos
+repositórios privados e o certificado Authenticode; não publica pacotes sem
+assinatura. Veja [installer/README.md](installer/README.md) para configurar os
+pré-requisitos.
 
 O bundle também publica `FarmaFlow-Migracao-Setup.exe`, o assistente gráfico
 para preparar o ensaio/corte sem executar PowerShell manualmente.

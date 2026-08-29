@@ -8,7 +8,14 @@ using System.Text.RegularExpressions;
 
 namespace FarmaFlow.Migration.Desktop;
 
-internal sealed record MigrationSource(string Host, int Port, string Database, string Username, string Password, string SslMode);
+internal sealed record MigrationSource(
+    string Host,
+    int Port,
+    string Database,
+    string Username,
+    string Password,
+    string SslMode,
+    SupabaseProjectAddress Project);
 internal sealed record StoreChoice(Guid Id, string Name, Guid OrganizationId);
 internal sealed record MigrationRequest(
     MigrationSource Source,
@@ -68,19 +75,37 @@ internal sealed class MigrationPipeline
         await connection.OpenAsync(cancellationToken);
         await using var transaction = await connection.BeginTransactionAsync(cancellationToken);
         const string sql = """
-            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM anon, authenticated;
-            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE USAGE, SELECT ON SEQUENCES FROM anon, authenticated;
-            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM anon, authenticated;
-            REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
-            REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
-            REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM anon, authenticated;
+            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLES FROM anon, authenticated, service_role;
+            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE USAGE, SELECT ON SEQUENCES FROM anon, authenticated, service_role;
+            ALTER DEFAULT PRIVILEGES FOR ROLE postgres IN SCHEMA public REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated, service_role;
+            REVOKE ALL PRIVILEGES ON ALL TABLES IN SCHEMA public FROM anon, authenticated, service_role;
+            REVOKE ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated, service_role;
+            REVOKE EXECUTE ON ALL FUNCTIONS IN SCHEMA public FROM PUBLIC, anon, authenticated, service_role;
             UPDATE public.auth_sessions SET revoked_at = COALESCE(revoked_at, now()) WHERE revoked_at IS NULL;
             """;
         await using (var command = new NpgsqlCommand(sql, connection, transaction)) await command.ExecuteNonQueryAsync(cancellationToken);
         await transaction.CommitAsync(cancellationToken);
-        await using var verify = new NpgsqlCommand("SELECT COUNT(*) FROM information_schema.role_table_grants WHERE table_schema='public' AND grantee IN ('anon','authenticated')", connection);
+        const string verifySql = """
+            WITH roles(role_name) AS (VALUES ('anon'),('authenticated'),('service_role')),
+            remaining AS (
+                SELECT grants.grantee AS role_name, grants.table_name AS object_name
+                FROM information_schema.role_table_grants grants
+                WHERE grants.table_schema='public' AND grants.grantee IN ('anon','authenticated','service_role')
+                UNION ALL
+                SELECT roles.role_name,c.relname
+                FROM roles CROSS JOIN pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+                WHERE n.nspname='public' AND c.relkind='S'
+                  AND (has_sequence_privilege(roles.role_name,c.oid,'USAGE') OR has_sequence_privilege(roles.role_name,c.oid,'SELECT'))
+                UNION ALL
+                SELECT roles.role_name,p.proname
+                FROM roles CROSS JOIN pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+                WHERE n.nspname='public' AND has_function_privilege(roles.role_name,p.oid,'EXECUTE')
+            )
+            SELECT COUNT(*) FROM remaining
+            """;
+        await using var verify = new NpgsqlCommand(verifySql, connection);
         long grants = Convert.ToInt64(await verify.ExecuteScalarAsync(cancellationToken));
-        if (grants != 0) throw new InvalidOperationException($"A proteção do Data API terminou com {grants} privilégios de tabela restantes.");
+        if (grants != 0) throw new InvalidOperationException($"A proteção do Data API terminou com {grants} privilégios restantes em tabelas, sequências ou funções.");
         await VerifyPublicApiDeniedAsync(source, publicApiKey, cancellationToken);
     }
 
@@ -88,14 +113,33 @@ internal sealed class MigrationPipeline
     {
         if (string.IsNullOrWhiteSpace(publicApiKey))
             throw new InvalidOperationException("Informe a chave pública anon para validar o bloqueio do Data API.");
-        string apiHost = source.Host.StartsWith("db.", StringComparison.OrdinalIgnoreCase) ? source.Host[3..] : source.Host;
         using var client = new HttpClient { Timeout = TimeSpan.FromSeconds(15) };
-        using var request = new HttpRequestMessage(HttpMethod.Get, $"https://{apiHost}/rest/v1/");
-        request.Headers.TryAddWithoutValidation("apikey", publicApiKey.Trim());
-        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {publicApiKey.Trim()}");
+        string key = publicApiKey.Trim();
+
+        // First prove that the supplied key belongs to the project. Otherwise
+        // an invalid key could make the denial test pass for the wrong reason.
+        using (var authRequest = new HttpRequestMessage(HttpMethod.Get, new Uri(source.Project.BaseUri, "/auth/v1/settings")))
+        {
+            authRequest.Headers.TryAddWithoutValidation("apikey", key);
+            using HttpResponseMessage authResponse = await client.SendAsync(authRequest, cancellationToken);
+            if (!authResponse.IsSuccessStatusCode)
+                throw new InvalidOperationException($"A chave pública não foi aceita pelo projeto Supabase (HTTP {(int)authResponse.StatusCode}).");
+        }
+
+        using var request = new HttpRequestMessage(HttpMethod.Get, new Uri(source.Project.BaseUri, "/rest/v1/stores?select=id&limit=1"));
+        request.Headers.TryAddWithoutValidation("apikey", key);
+        request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {key}");
         using HttpResponseMessage response = await client.SendAsync(request, cancellationToken);
-        if (response.StatusCode is not System.Net.HttpStatusCode.Unauthorized and not System.Net.HttpStatusCode.Forbidden)
-            throw new InvalidOperationException($"A chamada REST com a chave pública não foi negada (HTTP {(int)response.StatusCode}).");
+        string body = await response.Content.ReadAsStringAsync(cancellationToken);
+        bool denied = response.StatusCode is HttpStatusCode.Unauthorized
+            or HttpStatusCode.Forbidden
+            or HttpStatusCode.NotFound
+            or HttpStatusCode.NotAcceptable
+            || body.Contains("42501", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("permission denied", StringComparison.OrdinalIgnoreCase)
+            || body.Contains("PGRST106", StringComparison.OrdinalIgnoreCase);
+        if (!denied)
+            throw new InvalidOperationException($"A tabela stores ainda respondeu pelo Data API (HTTP {(int)response.StatusCode}). Remova public dos schemas expostos ou desative o Data API.");
     }
 
     internal async Task RunAsync(MigrationRequest request, IProgress<OperationProgress> progress, CancellationToken cancellationToken)

@@ -20,10 +20,16 @@ internal sealed class ServerSetupForm : Form
     private readonly Button _run = new() { Text = "Instalar servidor", AutoSize = true };
     private readonly Button _next = new() { Text = "Continuar", AutoSize = true };
     private readonly Button _back = new() { Text = "Voltar", AutoSize = true, Enabled = false };
+    private readonly string _diagnosticPath;
     private CancellationTokenSource? _cancellation;
 
     internal ServerSetupForm()
     {
+        string diagnosticDirectory = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData),
+            "FarmaFlow", "Server", "logs");
+        Directory.CreateDirectory(diagnosticDirectory);
+        _diagnosticPath = Path.Combine(diagnosticDirectory, $"server-setup-{DateTime.Now:yyyyMMdd}.log");
         Text = "FarmaFlow — Instalar servidor";
         StartPosition = FormStartPosition.CenterScreen;
         MinimumSize = new Size(760, 520);
@@ -119,8 +125,15 @@ internal sealed class ServerSetupForm : Form
         await using (var checkConnection = new NpgsqlConnection(new NpgsqlConnectionStringBuilder { Host = "127.0.0.1", Port = 54329, Database = "farmaflow", Username = "farmaflow", Password = databasePassword, SslMode = SslMode.Prefer }.ConnectionString))
         {
             await checkConnection.OpenAsync(cancellationToken);
-            await using var check = new NpgsqlCommand("SELECT CASE WHEN to_regclass('public.stores') IS NULL THEN 0 ELSE (SELECT COUNT(*) FROM public.stores) END", checkConnection);
-            if (Convert.ToInt64(await check.ExecuteScalarAsync(cancellationToken)) > 0)
+            await using var exists = new NpgsqlCommand("SELECT to_regclass('public.stores') IS NOT NULL", checkConnection);
+            bool storesTableExists = Convert.ToBoolean(await exists.ExecuteScalarAsync(cancellationToken));
+            long storeCount = 0;
+            if (storesTableExists)
+            {
+                await using var check = new NpgsqlCommand("SELECT COUNT(*) FROM public.stores", checkConnection);
+                storeCount = Convert.ToInt64(await check.ExecuteScalarAsync(cancellationToken));
+            }
+            if (storeCount > 0)
                 throw new InvalidOperationException("Este servidor já contém uma loja. A restauração foi bloqueada; use o modo Reparar para apenas verificar os serviços.");
         }
         string temporary = Path.Combine(Path.GetTempPath(), $"farmaflow-server-{Guid.NewGuid():N}.dump");
@@ -153,8 +166,8 @@ internal sealed class ServerSetupForm : Form
             string hostExecutable = Path.Combine(installRoot, "FarmaFlowServerHost.exe");
             ProcessResult backup = await RunAsync(hostExecutable, ["--backup-once"], null, cancellationToken);
             EnsureSuccess(backup, "O primeiro backup local falhou.");
-            await WaitForHostAsync(cancellationToken);
-            await CreateStationKitAsync(serviceRoot, installRoot, databasePassword, cancellationToken);
+            string certificateFingerprint = await WaitForHostAsync(cancellationToken);
+            await CreateStationKitAsync(serviceRoot, installRoot, databasePassword, certificateFingerprint, cancellationToken);
         }
         finally { CryptographicOperations.ZeroMemory(package.Plaintext); if (File.Exists(temporary)) File.Delete(temporary); }
     }
@@ -179,24 +192,43 @@ internal sealed class ServerSetupForm : Form
         await process.WaitForExitAsync();
     }
 
-    private static async Task WaitForHostAsync(CancellationToken cancellationToken)
+    private static async Task<string> WaitForHostAsync(CancellationToken cancellationToken)
     {
         using var client = new HttpClient(new HttpClientHandler { ServerCertificateCustomValidationCallback = HttpClientHandler.DangerousAcceptAnyServerCertificateValidator }) { Timeout = TimeSpan.FromSeconds(5) };
-        for (int attempt = 0; attempt < 12; attempt++)
+        DateTimeOffset deadline = DateTimeOffset.UtcNow.AddMinutes(2);
+        Exception? lastError = null;
+        while (DateTimeOffset.UtcNow < deadline)
         {
             try
             {
-                using HttpResponseMessage response = await client.GetAsync("https://127.0.0.1:8443/.well-known/farmaflow/health", cancellationToken);
-                string body = await response.Content.ReadAsStringAsync(cancellationToken);
-                if (response.IsSuccessStatusCode && body.Contains("\"UP\"", StringComparison.OrdinalIgnoreCase)) return;
-                await Task.Delay(1000, cancellationToken);
+                using HttpResponseMessage health = await client.GetAsync("https://127.0.0.1:8443/.well-known/farmaflow/health", cancellationToken);
+                using HttpResponseMessage deployment = await client.GetAsync("https://127.0.0.1:8443/backend/public/deployment", cancellationToken);
+                using HttpResponseMessage web = await client.GetAsync("https://127.0.0.1:8443/", cancellationToken);
+                using HttpResponseMessage server = await client.GetAsync("https://127.0.0.1:8443/.well-known/farmaflow/server", cancellationToken);
+                string healthBody = await health.Content.ReadAsStringAsync(cancellationToken);
+                string deploymentBody = await deployment.Content.ReadAsStringAsync(cancellationToken);
+                if (health.IsSuccessStatusCode
+                    && healthBody.Contains("\"UP\"", StringComparison.OrdinalIgnoreCase)
+                    && deployment.IsSuccessStatusCode
+                    && deploymentBody.Contains("LOCAL_SINGLE_STORE", StringComparison.OrdinalIgnoreCase)
+                    && web.IsSuccessStatusCode
+                    && server.IsSuccessStatusCode)
+                {
+                    using JsonDocument serverInfo = JsonDocument.Parse(await server.Content.ReadAsStringAsync(cancellationToken));
+                    return serverInfo.RootElement.GetProperty("certificateSha256").GetString()
+                        ?? throw new InvalidDataException("O Host não informou a impressão digital do certificado.");
+                }
             }
-            catch when (attempt < 11) { await Task.Delay(1000, cancellationToken); }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                lastError = exception;
+            }
+            await Task.Delay(2000, cancellationToken);
         }
-        throw new InvalidOperationException("O servidor foi ativado, mas não concluiu o teste de saúde em https://127.0.0.1:8443.");
+        throw new InvalidOperationException($"O servidor foi ativado, mas Spring, Next e Host não concluíram os testes em até dois minutos. {Redact(lastError?.Message ?? string.Empty)}");
     }
 
-    private async Task CreateStationKitAsync(string serviceRoot, string installRoot, string databasePassword, CancellationToken cancellationToken)
+    private async Task CreateStationKitAsync(string serviceRoot, string installRoot, string databasePassword, string certificateFingerprint, CancellationToken cancellationToken)
     {
         string stationInstaller = Path.Combine(installRoot, "FarmaFlow-Estacao-Setup.exe");
         if (!File.Exists(stationInstaller)) throw new InvalidOperationException("O instalador da estação não foi incluído nesta release.");
@@ -205,11 +237,16 @@ internal sealed class ServerSetupForm : Form
         await connection.OpenAsync(cancellationToken);
         await using var command = new NpgsqlCommand("SELECT id::text,name FROM public.stores LIMIT 2", connection);
         await using var reader = await command.ExecuteReaderAsync(cancellationToken);
-        if (!await reader.ReadAsync(cancellationToken) || await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("O servidor precisa conter exatamente uma loja para gerar o kit.");
-        string storeId = reader.GetString(0); string storeName = reader.GetString(1);
+        if (!await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("O servidor precisa conter exatamente uma loja para gerar o kit.");
+        string storeId = reader.GetString(0);
+        string storeName = reader.GetString(1);
+        if (await reader.ReadAsync(cancellationToken)) throw new InvalidOperationException("O servidor precisa conter exatamente uma loja para gerar o kit.");
         using var store = new X509Store(StoreName.My, StoreLocation.LocalMachine);
         store.Open(OpenFlags.ReadOnly);
-        X509Certificate2? certificate = store.Certificates.OfType<X509Certificate2>().FirstOrDefault(item => item.FriendlyName == "FarmaFlow Local Server" && item.HasPrivateKey);
+        X509Certificate2? certificate = store.Certificates.OfType<X509Certificate2>().FirstOrDefault(item =>
+            item.FriendlyName == "FarmaFlow Local Server"
+            && item.HasPrivateKey
+            && string.Equals(Convert.ToHexString(SHA256.HashData(item.RawData)), certificateFingerprint, StringComparison.OrdinalIgnoreCase));
         if (certificate is null) throw new InvalidOperationException("Certificado local do servidor não encontrado.");
         string kit = Path.Combine(serviceRoot, "station-kit");
         Directory.CreateDirectory(kit);
@@ -252,7 +289,12 @@ internal sealed class ServerSetupForm : Form
     private static void SelectFolder(TextBox target) { using var dialog = new FolderBrowserDialog(); if (dialog.ShowDialog() == DialogResult.OK) target.Text = dialog.SelectedPath; }
     private async void RunButtonClick(object? sender, EventArgs e) { if (_tabs.SelectedIndex == 3) { Close(); return; } await InstallAsync(); }
     private void UpdateNavigation() { _back.Enabled = _tabs.SelectedIndex is > 0 and < 3; _next.Visible = _tabs.SelectedIndex is 0 or 1 or 2; _run.Visible = _tabs.SelectedIndex is 2 or 3; _run.Text = _tabs.SelectedIndex == 2 ? "Instalar servidor" : "Fechar"; }
-    private void Append(string message) => _log.AppendText($"{DateTime.Now:HH:mm:ss}  {message}{Environment.NewLine}");
+    private void Append(string message)
+    {
+        string line = $"{DateTime.Now:O}  {Redact(message)}{Environment.NewLine}";
+        _log.AppendText(line);
+        try { File.AppendAllText(_diagnosticPath, line); } catch { }
+    }
 }
 
 internal sealed record ProcessResult(int ExitCode, string Output, string Error);

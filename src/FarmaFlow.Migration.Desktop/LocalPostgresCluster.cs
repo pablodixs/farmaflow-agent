@@ -29,7 +29,9 @@ internal sealed class LocalPostgresCluster : IAsyncDisposable
         Directory.CreateDirectory(root);
         string password = Convert.ToBase64String(RandomNumberGenerator.GetBytes(36));
         int port = FindFreePort();
-        string passwordFile = Path.Combine(root, "password.tmp");
+        // initdb refuses to initialize a non-empty PGDATA directory. Keep the
+        // one-time password file outside the cluster directory.
+        string passwordFile = Path.Combine(Path.GetTempPath(), $"farmaflow-initdb-{Guid.NewGuid():N}.tmp");
         bool started = false;
         await File.WriteAllTextAsync(passwordFile, password, Encoding.ASCII, cancellationToken);
         try

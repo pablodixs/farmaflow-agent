@@ -17,14 +17,14 @@ O repositório `farmaflow-agent` é o agregador de release. Não é necessário 
 
 Para executar manualmente, abra **Actions > Build Windows installers > Run workflow** e informe a versão. Os campos `backend_ref` e `web_ref` aceitam branch, tag ou SHA. Também é possível definir `FARMAFLOW_BACKEND_REF` e `FARMAFLOW_WEB_REF` como variables do repositório; o padrão é `main`.
 
-Se backend ou frontend forem privados, configure o secret `FARMAFLOW_REPOS_TOKEN` com um fine-grained personal access token que tenha apenas `Contents: read` nos dois repositórios. O `GITHUB_TOKEN` é suficiente quando eles forem públicos.
+Como backend e frontend são privados, configure o secret `FARMAFLOW_REPOS_TOKEN` com um fine-grained personal access token que tenha apenas `Contents: read` nos dois repositórios.
 
-Para assinatura Authenticode opcional, configure:
+Para a assinatura Authenticode obrigatória, configure:
 
 - `WINDOWS_SIGNING_CERT_BASE64`: conteúdo Base64 do certificado PFX;
 - `WINDOWS_SIGNING_CERT_PASSWORD`: senha do PFX.
 
-Sem esses dois secrets, os instaladores continuam sendo gerados, mas ficam sem assinatura Authenticode. Em repositório público, a action também publica uma atestação de proveniência Sigstore. Tags no formato `vX.Y.Z` criam a GitHub Release; execuções manuais somente disponibilizam o bundle como artifact por 30 dias.
+Sem qualquer um dos três secrets, o workflow para antes de acessar os repositórios ou gerar um pacote incompleto. Depois da assinatura, a action valida o Authenticode dos três instaladores. Em repositório público, ela também publica uma atestação de proveniência Sigstore. Tags no formato `vX.Y.Z` criam a GitHub Release; execuções manuais somente disponibilizam o bundle como artifact por 30 dias.
 
 Cada bundle contém:
 

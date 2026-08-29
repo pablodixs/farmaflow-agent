@@ -11,6 +11,7 @@ builder.Configuration.AddJsonFile(localConfig, optional: true, reloadOnChange: f
 
 var options = builder.Configuration.GetSection("ServerHost").Get<ServerHostOptions>() ?? new ServerHostOptions();
 Directory.CreateDirectory(options.DataDirectory);
+builder.Logging.AddProvider(new DailyFileLoggerProvider(Path.Combine(options.DataDirectory, "logs")));
 var certificate = LocalCertificateProvider.LoadOrCreate();
 var secrets = ServerSecrets.Load(options);
 

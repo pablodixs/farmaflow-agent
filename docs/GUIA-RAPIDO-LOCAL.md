@@ -7,7 +7,7 @@ fica para o suporte quando algo sair do fluxo.
 
 1. Execute `FarmaFlow-Migracao-Setup.exe`.
 2. Escolha **Ensaio** na primeira execução.
-3. Cole a conexão do PostgreSQL do Supabase e informe a senha.
+3. Cole a conexão do PostgreSQL do Supabase e informe a senha. Se o project ref não puder ser identificado pelo pooler, informe também a URL `https://<project-ref>.supabase.co`.
 4. Marque as lojas e escolha uma senha forte para o corte.
 5. No ensaio, valide vendas, estoque, caixa e impressão. Para o corte, coloque o backend cloud em manutenção antes de escolher **Corte definitivo**.
 
@@ -30,7 +30,7 @@ são configurados automaticamente. O resultado inclui o kit da estação em
 
 1. Copie `FarmaFlow-Estacao-Setup.exe` e o arquivo `.ffstation` do kit para o computador.
 2. Execute o instalador.
-3. Abra o arquivo `.ffstation` e confirme a loja exibida.
+3. Confirme a loja exibida. O instalador detecta automaticamente um único `.ffstation` colocado ao lado dele; se o arquivo foi entregue separadamente, abra-o depois da instalação.
 
 Depois, abra o FarmaFlow, faça login e cadastre a estação. O código será enviado
 automaticamente ao agente local. Se o agente não estiver disponível, use o

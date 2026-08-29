@@ -87,6 +87,11 @@ jobs:
           completo também é publicado na release como FarmaFlow-Migracao-Setup.exe
           e no artifact FarmaFlow-Windows-<versão>.
           "@ | Set-Content publish-migration\LEIA-ME.txt -Encoding UTF8
+      - name: Smoke test portable PostgreSQL
+        shell: pwsh
+        run: |
+          & .\publish-migration\FarmaFlowMigracaoSetup.exe --smoke-test-postgres
+          if ($LASTEXITCODE -ne 0) { throw "O PostgreSQL portátil não conseguiu inicializar, iniciar e limpar um cluster temporário." }
       - name: Verify native PDF printing library
         shell: pwsh
         run: |

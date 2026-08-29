@@ -44,7 +44,16 @@ public sealed class DesktopConnectionStore
         if (fingerprint.Length != 64 || fingerprint.Any(character => !Uri.IsHexDigit(character)))
             throw new InvalidOperationException("A impressão digital deve conter 64 caracteres SHA-256.");
 
-        File.WriteAllText(_path, JsonSerializer.Serialize(new DesktopConnection(url, fingerprint), JsonOptions));
+        string temporary = $"{_path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            File.WriteAllText(temporary, JsonSerializer.Serialize(new DesktopConnection(url, fingerprint), JsonOptions));
+            File.Move(temporary, _path, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporary)) File.Delete(temporary);
+        }
     }
 
     public StationBootstrapInfo ImportStationPackage(string path)
