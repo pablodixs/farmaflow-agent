@@ -1,7 +1,9 @@
+using FarmaFlow.Migration.Core;
 using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace FarmaFlow.Server.Host;
 
@@ -10,8 +12,7 @@ public sealed class BackupService(
     ServerSecrets secrets,
     ILogger<BackupService> logger) : BackgroundService
 {
-    private const int FormatVersion = 1;
-    private static readonly byte[] Magic = "FFBACKUP"u8.ToArray();
+    private const int FormatVersion = 3;
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -59,44 +60,31 @@ public sealed class BackupService(
                 cancellationToken);
             if (string.IsNullOrWhiteSpace(catalog)) throw new InvalidOperationException("O catálogo do pg_restore está vazio.");
 
-            byte[] plaintext = await File.ReadAllBytesAsync(dumpPath, cancellationToken);
-            byte[] nonce = RandomNumberGenerator.GetBytes(12);
-            byte[] tag = new byte[16];
-            byte[] ciphertext = new byte[plaintext.Length];
-            byte[] key = Convert.FromBase64String(secrets.BackupKey);
-            using (var aes = new AesGcm(key, tag.Length)) aes.Encrypt(nonce, plaintext, ciphertext, Magic);
-            CryptographicOperations.ZeroMemory(key);
-            CryptographicOperations.ZeroMemory(plaintext);
-
-            await using (var output = File.Create(backupPath))
-            {
-                await output.WriteAsync(Magic, cancellationToken);
-                await output.WriteAsync(BitConverter.GetBytes(FormatVersion), cancellationToken);
-                await output.WriteAsync(nonce, cancellationToken);
-                await output.WriteAsync(tag, cancellationToken);
-                await output.WriteAsync(ciphertext, cancellationToken);
-                await output.FlushAsync(cancellationToken);
-            }
-
+            string plaintextSha256 = await ComputeSha256Async(dumpPath, cancellationToken);
             var manifest = new
             {
                 format = "FarmaFlow encrypted PostgreSQL backup",
                 formatVersion = FormatVersion,
+                kind = "SERVER_BACKUP",
                 createdAt = DateTimeOffset.Now,
                 database = "farmaflow",
                 databaseMajorVersion = 17,
-                encryptedBytes = new FileInfo(backupPath).Length,
-                sha256 = await ComputeSha256Async(backupPath, cancellationToken),
+                plaintextSha256,
                 pgRestoreCatalogSha256 = Convert.ToHexString(SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(catalog)))
             };
+            using JsonDocument embeddedManifest = JsonDocument.Parse(JsonSerializer.Serialize(manifest));
+            string packageSha256 = await PackageEnvelope.WriteV3Async(backupPath, dumpPath, embeddedManifest.RootElement, secrets.BackupKey, cancellationToken);
+            JsonObject sidecar = JsonNode.Parse(embeddedManifest.RootElement.GetRawText())!.AsObject();
+            sidecar["encryptedBytes"] = new FileInfo(backupPath).Length;
+            sidecar["packageSha256"] = packageSha256;
             string manifestPath = $"{backupPath}.json";
-            await File.WriteAllTextAsync(manifestPath, JsonSerializer.Serialize(manifest, new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
+            await WriteTextAtomicallyAsync(manifestPath, sidecar.ToJsonString(new JsonSerializerOptions { WriteIndented = true }), cancellationToken);
 
             if (!string.IsNullOrWhiteSpace(options.ExternalBackupDirectory))
             {
                 Directory.CreateDirectory(options.ExternalBackupDirectory);
-                File.Copy(backupPath, Path.Combine(options.ExternalBackupDirectory, Path.GetFileName(backupPath)), overwrite: true);
-                File.Copy(manifestPath, Path.Combine(options.ExternalBackupDirectory, Path.GetFileName(manifestPath)), overwrite: true);
+                await CopyAtomicallyAsync(backupPath, Path.Combine(options.ExternalBackupDirectory, Path.GetFileName(backupPath)), cancellationToken);
+                await CopyAtomicallyAsync(manifestPath, Path.Combine(options.ExternalBackupDirectory, Path.GetFileName(manifestPath)), cancellationToken);
                 ApplyRetention(options.ExternalBackupDirectory);
             }
 
@@ -122,9 +110,18 @@ public sealed class BackupService(
         };
         startInfo.Environment["PGPASSWORD"] = secrets.DatabasePassword;
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Não foi possível executar {Path.GetFileName(executable)}.");
-        Task<string> outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
-        Task<string> errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+        Task<string> outputTask = process.StandardOutput.ReadToEndAsync();
+        Task<string> errorTask = process.StandardError.ReadToEndAsync();
+        try { await process.WaitForExitAsync(cancellationToken); }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
+            }
+            throw;
+        }
         string output = await outputTask;
         string error = await errorTask;
         if (process.ExitCode != 0) throw new InvalidOperationException($"{Path.GetFileName(executable)} falhou: {error}");
@@ -159,5 +156,29 @@ public sealed class BackupService(
     {
         await using FileStream input = File.OpenRead(path);
         return Convert.ToHexString(await SHA256.HashDataAsync(input, cancellationToken));
+    }
+
+    private static async Task WriteTextAtomicallyAsync(string path, string content, CancellationToken cancellationToken)
+    {
+        string temporary = $"{path}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await File.WriteAllTextAsync(temporary, content, cancellationToken);
+            File.Move(temporary, path, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
+    }
+
+    private static async Task CopyAtomicallyAsync(string source, string destination, CancellationToken cancellationToken)
+    {
+        string temporary = $"{destination}.{Guid.NewGuid():N}.tmp";
+        try
+        {
+            await using (FileStream input = new(source, FileMode.Open, FileAccess.Read, FileShare.Read, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+            await using (FileStream output = new(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None, 1024 * 1024, FileOptions.Asynchronous | FileOptions.SequentialScan))
+                await input.CopyToAsync(output, cancellationToken);
+            File.Move(temporary, destination, overwrite: true);
+        }
+        finally { if (File.Exists(temporary)) File.Delete(temporary); }
     }
 }

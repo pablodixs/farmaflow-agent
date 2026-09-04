@@ -405,11 +405,14 @@ Confira no manifesto `<pacote>.json`:
 - `kind` igual a `STORE`;
 - `storeId` igual à loja correta;
 - `organizationId` correto;
-- `databaseMajorVersion` igual a `17`;
-- `schemaVersion` igual ou superior a `52`;
+- `targetDatabaseMajorVersion` igual a `17`;
+- `schemaVersion` entre `52` e `54`;
 - `packageSha256` correspondente ao arquivo.
 
-Copie o `.ffbackup` e seu `.json` para dois locais protegidos.
+Pacotes novos usam o formato streaming v3: o manifesto e cada bloco do dump são
+autenticados, sem carregar o banco inteiro na memória. O manifesto autenticado
+viaja dentro do `.ffstore`; o `.json` lateral continua útil para auditoria.
+Copie ambos para dois locais protegidos.
 
 ### 9.7 Repetir para a próxima loja
 
@@ -474,7 +477,7 @@ O instalador:
 - inicializa PostgreSQL em `127.0.0.1:54329`;
 - cria os serviços `FarmaFlowPostgreSQL` e `FarmaFlowServer`;
 - abre somente TCP `8443` no perfil de rede privada;
-- mantém `FarmaFlowServer` parado enquanto não houver exatamente uma loja e schema V52 ou superior.
+- mantém `FarmaFlowServer` parado enquanto não houver exatamente uma loja, schema entre V52 e V54 e histórico Flyway sem falhas.
 
 Confira:
 
@@ -507,7 +510,11 @@ $ffStorePackage = "D:\FarmaFlow-Corte\loja-1.ffbackup"
   --pg-bin $ffPgBin
 ```
 
-Mantenha `<pacote>.json` ao lado do pacote. Sem o manifesto, a ferramenta ainda valida AES-GCM e o catálogo, mas não consegue comparar automaticamente todas as contagens e reconciliações da origem.
+O `.ffstore` atual contém um manifesto autenticado e pode ser restaurado sem o
+`.json` lateral. Antes de ativar, a ferramenta confere o catálogo, a versão do
+PostgreSQL, o histórico Flyway, todas as contagens, vendas, pagamentos, estoque,
+lotes, caixa, compras, balanços, mídias e sequências. Qualquer divergência deixa
+o servidor bloqueado e informa a área que precisa ser corrigida.
 
 O resultado esperado termina com `Restauração concluída e validada`.
 
@@ -543,7 +550,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -InstallDirectory "C:\Program Files\FarmaFlow Server"
 ```
 
-O script exige schema V52 ou superior e exatamente uma loja. Depois da ativação:
+O script exige schema entre V52 e V54, nenhuma migration Flyway com falha e exatamente uma loja. Depois da ativação:
 
 ```powershell
 Get-Service FarmaFlowPostgreSQL
@@ -752,7 +759,7 @@ Remove-Item Env:\PGPASSWORD
   --pg-bin $ffPgBin
 ```
 
-Quando solicitado, informe somente o valor Base64 de `BackupKey` presente no arquivo exportado e depois a senha do PostgreSQL local. O resultado deve confirmar schema V52 ou superior.
+Quando solicitado, informe somente o valor Base64 de `BackupKey` presente no arquivo exportado e depois a senha do PostgreSQL local. Backups novos usam criptografia em blocos (v3), e backups v1 continuam restauráveis. O resultado deve confirmar schema entre V52 e V54 e ausência de migrations Flyway com falha.
 
 Depois de registrar o teste, remova apenas o banco descartável:
 
@@ -816,7 +823,7 @@ Get-Service FarmaFlowServer
 Get-Content "$env:ProgramData\FarmaFlow\Server\migration-required.txt" -ErrorAction SilentlyContinue
 ```
 
-Confirme que a restauração terminou, o schema é V52 ou superior e existe exatamente uma loja. Execute novamente **Ativar FarmaFlow após migração** somente depois de corrigir a causa.
+Confirme que a restauração terminou, o schema está entre V52 e V54, o Flyway não tem falhas e existe exatamente uma loja. Execute novamente **Ativar FarmaFlow após migração** somente depois de corrigir a causa.
 
 ### A estação não abre o servidor
 

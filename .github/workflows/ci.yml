@@ -93,6 +93,9 @@ jobs:
           $process = Start-Process -FilePath .\publish-migration\FarmaFlowMigracaoSetup.exe `
             -ArgumentList "--smoke-test-postgres" -Wait -PassThru -NoNewWindow
           if ($process.ExitCode -ne 0) { throw "O PostgreSQL portátil não conseguiu inicializar, iniciar e limpar um cluster temporário." }
+      - name: End-to-end migration flow
+        shell: pwsh
+        run: .\scripts\Test-MigrationFlow.ps1 -PostgresBin .\publish-migration\postgres\bin -MigrationExecutable .\publish-migration\FarmaFlow.Migration.exe
       - name: Verify native PDF printing library
         shell: pwsh
         run: |

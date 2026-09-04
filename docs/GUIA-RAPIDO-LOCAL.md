@@ -11,9 +11,11 @@ fica para o suporte quando algo sair do fluxo.
 4. Marque as lojas e escolha uma senha forte para o corte.
 5. No ensaio, valide vendas, estoque, caixa e impressão. Para o corte, coloque o backend cloud em manutenção antes de escolher **Corte definitivo**.
 
-O assistente cria um arquivo `.ffstore` por loja. Guarde os arquivos e a senha
-em locais separados. O relatório sem credenciais fica na mesma pasta em HTML e
-JSON.
+O assistente cria uma subpasta exclusiva para a execução, com um arquivo
+`.ffstore` por loja. Mídia ausente, schema incompatível, Flyway com falha ou
+divergência de dados interrompe o processo com a correção indicada. Guarde os
+arquivos e a senha em locais separados. O relatório sem credenciais fica na
+mesma subpasta em HTML e JSON.
 
 ## 2. Servidor: instalar uma loja
 
@@ -21,6 +23,10 @@ JSON.
 2. Selecione o `.ffstore` da loja e informe a senha do corte.
 3. Escolha uma pasta externa para backups e outra mídia para a chave de recuperação.
 4. Clique em **Instalar servidor** e aguarde a validação.
+
+Se faltar energia ou a instalação for cancelada, execute novamente com o mesmo
+pacote. O instalador só retoma quando encontra a marca de instalação incompleta
+e a mesma loja; um servidor já operacional nunca é sobrescrito.
 
 O banco, o backend, o frontend, o certificado, o firewall e o primeiro backup
 são configurados automaticamente. O resultado inclui o kit da estação em

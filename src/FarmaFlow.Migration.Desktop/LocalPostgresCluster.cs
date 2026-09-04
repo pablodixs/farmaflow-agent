@@ -31,7 +31,7 @@ internal sealed class LocalPostgresCluster : IAsyncDisposable
         int port = FindFreePort();
         // initdb refuses to initialize a non-empty PGDATA directory. Keep the
         // one-time password file outside the cluster directory.
-        string passwordFile = Path.Combine(Path.GetTempPath(), $"farmaflow-initdb-{Guid.NewGuid():N}.tmp");
+        string passwordFile = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(root))!, $"initdb-{Guid.NewGuid():N}.tmp");
         bool started = false;
         await File.WriteAllTextAsync(passwordFile, password, Encoding.ASCII, cancellationToken);
         try
@@ -66,9 +66,9 @@ internal sealed class LocalPostgresCluster : IAsyncDisposable
         }
         catch
         {
-            if (started)
+            if (started || File.Exists(Path.Combine(root, "postmaster.pid")))
             {
-                try { await ProcessRunner.RunAsync(Path.Combine(postgresBin, "pg_ctl.exe"), ["stop", "--pgdata", root, "--wait"], cancellationToken: CancellationToken.None); } catch { }
+                try { await ProcessRunner.RunAsync(Path.Combine(postgresBin, "pg_ctl.exe"), ["stop", "--pgdata", root, "--mode", "immediate", "--wait"], cancellationToken: CancellationToken.None); } catch { }
             }
             throw;
         }
@@ -82,8 +82,14 @@ internal sealed class LocalPostgresCluster : IAsyncDisposable
     {
         if (Directory.Exists(_root))
         {
-            await ProcessRunner.RunAsync(Path.Combine(_postgresBin, "pg_ctl.exe"), ["stop", "--pgdata", _root, "--wait"], cancellationToken: CancellationToken.None);
-            try { Directory.Delete(_root, recursive: true); } catch { }
+            string pidFile = Path.Combine(_root, "postmaster.pid");
+            if (File.Exists(pidFile))
+            {
+                ProcessResult stopped = await ProcessRunner.RunAsync(Path.Combine(_postgresBin, "pg_ctl.exe"), ["stop", "--pgdata", _root, "--mode", "fast", "--wait"], cancellationToken: CancellationToken.None);
+                if (stopped.ExitCode != 0 && File.Exists(pidFile))
+                    throw new InvalidOperationException($"O PostgreSQL temporário não pôde ser encerrado. Dados temporários permanecem em {_root}. {stopped.Error}");
+            }
+            Directory.Delete(_root, recursive: true);
         }
     }
 

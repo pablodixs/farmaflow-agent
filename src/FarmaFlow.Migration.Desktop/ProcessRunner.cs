@@ -29,17 +29,29 @@ internal static class ProcessRunner
 
         using var process = Process.Start(startInfo) ?? throw new InvalidOperationException($"Não foi possível iniciar {Path.GetFileName(executable)}.");
         Task<string> outputTask = captureOutput
-            ? process.StandardOutput.ReadToEndAsync(cancellationToken)
+            ? process.StandardOutput.ReadToEndAsync()
             : Task.FromResult(string.Empty);
         Task<string> errorTask = captureOutput
-            ? process.StandardError.ReadToEndAsync(cancellationToken)
+            ? process.StandardError.ReadToEndAsync()
             : Task.FromResult(string.Empty);
         if (input is not null)
         {
             await using StreamWriter writer = process.StandardInput;
             foreach (string line in input) await writer.WriteLineAsync(line);
         }
-        await process.WaitForExitAsync(cancellationToken);
+        try
+        {
+            await process.WaitForExitAsync(cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            if (!process.HasExited)
+            {
+                try { process.Kill(entireProcessTree: true); } catch { }
+                try { await process.WaitForExitAsync(CancellationToken.None); } catch { }
+            }
+            throw;
+        }
         return new ProcessResult(process.ExitCode, await outputTask, await errorTask);
     }
 }

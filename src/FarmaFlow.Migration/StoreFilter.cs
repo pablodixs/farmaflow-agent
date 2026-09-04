@@ -38,7 +38,7 @@ internal static class StoreFilter
                 await ExecuteAsync(connection, transaction, $"LOCK TABLE {table.QualifiedName} IN SHARE ROW EXCLUSIVE MODE");
 
             await PrepareTransferSnapshotsAsync(connection, transaction, storeId);
-            await ScrubSecretsAsync(connection, transaction, tables);
+            await ScrubSecretsAsync(connection, transaction, tables, organizationId);
             await ExecuteAsync(connection, transaction, "CREATE TEMP TABLE ff_selected(table_oid integer NOT NULL, row_tid tid NOT NULL, kind smallint NOT NULL, PRIMARY KEY(table_oid,row_tid)) ON COMMIT DROP");
 
             foreach (TableInfo table in tables)
@@ -90,13 +90,17 @@ internal static class StoreFilter
         }
     }
 
-    private static string? SeedPredicate(TableInfo table)
+    private static string? SeedPredicate(TableInfo table) => SeedPredicateForTable(table.Name, table.Columns);
+
+    internal static string? SeedPredicateForTable(string tableName, IReadOnlySet<string> columns)
     {
-        if (table.Name == "stores" && table.Columns.Contains("id")) return "id=@store";
-        if (table.Name == "organizations" && table.Columns.Contains("id")) return "id=@organization";
-        if (table.Name == "flyway_schema_history" || table.Name.StartsWith("cmed_", StringComparison.Ordinal)) return "TRUE";
-        if (table.Columns.Contains("store_id")) return "store_id=@store";
-        if (table.Columns.Contains("organization_id")) return "organization_id=@organization";
+        if (tableName == "stores" && columns.Contains("id")) return "id=@store";
+        if (tableName == "organizations" && columns.Contains("id")) return "id=@organization";
+        if (tableName == "flyway_schema_history" || tableName.StartsWith("cmed_", StringComparison.Ordinal)) return "TRUE";
+        if (tableName == "label_templates" && columns.Contains("store_id") && columns.Contains("is_system"))
+            return "store_id=@store OR (store_id IS NULL AND is_system)";
+        if (columns.Contains("store_id")) return "store_id=@store";
+        if (columns.Contains("organization_id")) return "organization_id=@organization";
         return null;
     }
 
@@ -184,7 +188,7 @@ internal static class StoreFilter
         await command.ExecuteNonQueryAsync();
     }
 
-    private static async Task ScrubSecretsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, List<TableInfo> tables)
+    private static async Task ScrubSecretsAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, List<TableInfo> tables, Guid organizationId)
     {
         if (tables.Any(table => table.Name == "auth_sessions"))
             await ExecuteAsync(connection, transaction, "TRUNCATE TABLE public.auth_sessions");
@@ -194,6 +198,20 @@ internal static class StoreFilter
             await ExecuteAsync(connection, transaction, "UPDATE public.messaging_channels SET credentials_ciphertext='LOCAL_DISABLED', webhook_secret=md5(id::text || clock_timestamp()::text), active=false, status='DISCONNECTED', external_account_id=NULL, business_account_id=NULL, business_portfolio_id=NULL");
         if (tables.Any(table => table.Name == "store_stations"))
             await ExecuteAsync(connection, transaction, "UPDATE public.store_stations SET agent_token_hash=NULL, agent_credential_hash=NULL, active=false");
+        if (tables.Any(table => table.Name == "cmed_import_runs") && tables.Any(table => table.Name == "users"))
+        {
+            await using var command = new NpgsqlCommand("""
+                UPDATE public.cmed_import_runs run
+                SET imported_by_user_id=NULL
+                WHERE imported_by_user_id IS NOT NULL
+                  AND NOT EXISTS (
+                      SELECT 1 FROM public.users value
+                      WHERE value.id=run.imported_by_user_id AND value.organization_id=@organization
+                  )
+                """, connection, transaction);
+            command.Parameters.AddWithValue("organization", organizationId);
+            await command.ExecuteNonQueryAsync();
+        }
     }
 
     private static async Task ValidateForeignKeysAsync(NpgsqlConnection connection, NpgsqlTransaction transaction, List<ForeignKeyInfo> foreignKeys)

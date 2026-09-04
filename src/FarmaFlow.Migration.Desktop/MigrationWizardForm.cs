@@ -20,6 +20,7 @@ internal sealed class MigrationWizardForm : Form
     private readonly Button _next = new() { Text = "Continuar", AutoSize = true };
     private readonly Button _back = new() { Text = "Voltar", AutoSize = true, Enabled = false };
     private readonly Button _run = new() { Text = "Gerar pacotes", AutoSize = true };
+    private readonly Button _cancel = new() { Text = "Cancelar", AutoSize = true, Visible = false };
     private IReadOnlyList<StoreChoice> _discoveredStores = [];
     private CancellationTokenSource? _cancellation;
 
@@ -33,12 +34,13 @@ internal sealed class MigrationWizardForm : Form
         _mode.SelectedIndex = 0;
         BuildPages();
         var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 52, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(12, 8, 12, 8) };
-        footer.Controls.Add(_run); footer.Controls.Add(_next); footer.Controls.Add(_back);
+        footer.Controls.Add(_run); footer.Controls.Add(_cancel); footer.Controls.Add(_next); footer.Controls.Add(_back);
         Controls.Add(_tabs); Controls.Add(footer);
         _tabs.SelectedIndexChanged += (_, _) => UpdateNavigation();
         _next.Click += async (_, _) => await NextAsync();
         _back.Click += (_, _) => { if (_tabs.SelectedIndex > 0) _tabs.SelectedIndex--; };
         _run.Click += RunButtonClick;
+        _cancel.Click += (_, _) => { _cancel.Enabled = false; _cancellation?.Cancel(); Append("Cancelamento solicitado; encerrando os processos em execução…"); };
         UpdateNavigation();
     }
 
@@ -140,13 +142,22 @@ internal sealed class MigrationWizardForm : Form
             if (final && !_maintenance.Checked) throw new InvalidOperationException("Confirme a manutenção do backend cloud antes do corte.");
             if (final && !_dataApi.Checked) throw new InvalidOperationException("Confirme a proteção do Data API antes do corte.");
             MigrationSource source = ParseSource(_connection.Text, _sourcePassword.Text, _projectUrl.Text);
-            _tabs.SelectedIndex = 4; _run.Enabled = false; _next.Enabled = false; _back.Enabled = false;
+            _tabs.SelectedIndex = 4; _run.Enabled = false; _next.Enabled = false; _back.Enabled = false; _cancel.Visible = true; _cancel.Enabled = true;
             _cancellation = new CancellationTokenSource();
             var progress = new Progress<OperationProgress>(item => Append($"{item.Percent,3}%  {item.Message}"));
             await new MigrationPipeline(MigrationExecutable()).RunAsync(new MigrationRequest(source, PostgresBin(), _output.Text.Trim(), _packagePassword.Text, stores, final, _maintenance.Checked, _dataApi.Checked, _publicApiKey.Text), progress, _cancellation.Token);
             Append("Pacotes prontos. Transfira cada .ffstore com a mesma senha do corte.");
             _run.Enabled = true;
             _tabs.SelectedIndex = 5;
+        }
+        catch (OperationCanceledException)
+        {
+            Append("Migração cancelada. Nenhum pacote parcial foi publicado.");
+            ShowError("Migração cancelada com segurança. Execute novamente para recomeçar o ensaio ou corte.");
+            _run.Enabled = true;
+            _next.Enabled = true;
+            _back.Enabled = true;
+            _tabs.SelectedIndex = 3;
         }
         catch (Exception exception)
         {
@@ -157,7 +168,15 @@ internal sealed class MigrationWizardForm : Form
             _back.Enabled = true;
             _tabs.SelectedIndex = 3;
         }
-        finally { _sourcePassword.Text = string.Empty; _packagePassword.Text = string.Empty; _publicApiKey.Text = string.Empty; }
+        finally
+        {
+            _sourcePassword.Text = string.Empty;
+            _packagePassword.Text = string.Empty;
+            _publicApiKey.Text = string.Empty;
+            _cancellation?.Dispose();
+            _cancellation = null;
+            _cancel.Visible = false;
+        }
     }
 
     private void UpdateNavigation()
@@ -202,5 +221,16 @@ internal sealed class MigrationWizardForm : Form
                 return Uri.UnescapeDataString(pair[1]);
         }
         return null;
+    }
+
+    protected override void OnFormClosing(FormClosingEventArgs e)
+    {
+        if (_cancellation is not null)
+        {
+            e.Cancel = true;
+            MessageBox.Show(this, "A migração ainda está em andamento. Clique em Cancelar e aguarde a limpeza antes de fechar.", "Migração em andamento", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            return;
+        }
+        base.OnFormClosing(e);
     }
 }

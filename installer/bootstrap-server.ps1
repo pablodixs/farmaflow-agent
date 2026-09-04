@@ -18,6 +18,8 @@ function New-RandomSecret([int]$bytes = 32) {
 }
 
 New-Item -ItemType Directory -Force -Path $serviceRoot, $databaseRoot | Out-Null
+& icacls.exe $serviceRoot /inheritance:r /grant:r "*S-1-5-18:(OI)(CI)(F)" "*S-1-5-32-544:(OI)(CI)(F)" | Out-Null
+if ($LASTEXITCODE -ne 0) { throw "Não foi possível proteger a pasta de dados do servidor com ACL do Windows." }
 
 $secretsPath = Join-Path $serviceRoot "secrets.json"
 if (-not (Test-Path $secretsPath)) {
@@ -37,8 +39,10 @@ if (-not (Test-Path $secretsPath)) {
 if ($LASTEXITCODE -ne 0) { throw "Não foi possível proteger secrets.json com ACL do Windows." }
 
 if (-not (Test-Path (Join-Path $databaseRoot "PG_VERSION"))) {
-    Set-Content -Path $passwordFile -Value $databasePassword -NoNewline -Encoding ASCII
     try {
+        Set-Content -Path $passwordFile -Value $databasePassword -NoNewline -Encoding ASCII
+        & icacls.exe $passwordFile /inheritance:r /grant:r "*S-1-5-18:(F)" "*S-1-5-32-544:(F)" | Out-Null
+        if ($LASTEXITCODE -ne 0) { throw "Não foi possível proteger o arquivo temporário de senha do PostgreSQL." }
         & (Join-Path $postgresBin "initdb.exe") --pgdata=$databaseRoot --username=farmaflow --pwfile=$passwordFile --encoding=UTF8 --locale=C
         if ($LASTEXITCODE -ne 0) { throw "initdb falhou com código $LASTEXITCODE" }
         Add-Content -Path (Join-Path $databaseRoot "postgresql.conf") -Value @"
@@ -101,16 +105,21 @@ try {
     $schemaVersion = if ($schemaTableExists.Trim() -eq "t") {
         & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COALESCE((SELECT version FROM public.flyway_schema_history WHERE success ORDER BY installed_rank DESC LIMIT 1), '0')"
     } else { "0" }
+    $failedMigrations = if ($schemaTableExists.Trim() -eq "t") {
+        & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COUNT(*) FROM public.flyway_schema_history WHERE NOT success"
+    } else { "0" }
     $storeCount = if ($storesTableExists.Trim() -eq "t") {
         & (Join-Path $postgresBin "psql.exe") --host=127.0.0.1 --port=54329 --username=farmaflow --dbname=farmaflow --tuples-only --no-align --command="SELECT COUNT(*) FROM public.stores"
     } else { "0" }
 } finally {
     Remove-Item Env:\PGPASSWORD -ErrorAction SilentlyContinue
 }
-if ([int]$schemaVersion -ge 52 -and [int]$storeCount -eq 1) {
+$migrationMarker = Join-Path $serviceRoot "migration-required.txt"
+$migrationIsPending = Test-Path $migrationMarker
+if ([int]$schemaVersion -ge 52 -and [int]$schemaVersion -le 54 -and [int]$failedMigrations -eq 0 -and [int]$storeCount -eq 1 -and -not $migrationIsPending) {
     & sc.exe config "FarmaFlowServer" "start= auto" | Out-Null
     Start-Service "FarmaFlowServer"
 } else {
-    Set-Content -Path (Join-Path $serviceRoot "migration-required.txt") -Value "Restaure e valide um pacote .ffbackup antes de ativar o FarmaFlow Server."
+    Set-Content -Path $migrationMarker -Value "Restaure e valide um pacote .ffstore antes de ativar o FarmaFlow Server."
 }
 Write-Host "FarmaFlow Server instalado. Banco e backups permanecerão em $serviceRoot."
